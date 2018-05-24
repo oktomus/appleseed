@@ -43,6 +43,7 @@
 #include "renderer/kernel/rendering/debug/debugtilerenderer.h"
 #include "renderer/kernel/rendering/ephemeralshadingresultframebufferfactory.h"
 #include "renderer/kernel/rendering/final/adaptivepixelrenderer.h"
+#include "renderer/kernel/rendering/final/adaptivetilerenderer.h"
 #include "renderer/kernel/rendering/final/uniformpixelrenderer.h"
 #include "renderer/kernel/rendering/generic/genericframerenderer.h"
 #include "renderer/kernel/rendering/generic/genericsamplegenerator.h"
@@ -364,6 +365,10 @@ bool RendererComponents::create_pixel_renderer_factory()
 
         return true;
     }
+    else if (name == "tile-adaptive")
+    {
+        return true;
+    }
     else
     {
         RENDERER_LOG_ERROR(
@@ -405,12 +410,32 @@ bool RendererComponents::create_shading_result_framebuffer_factory()
 bool RendererComponents::create_tile_renderer_factory()
 {
     const string name = m_params.get_optional<string>("tile_renderer", "");
+    const string pixel_renderer_name = m_params.get_optional<string>("pixel_renderer", "");
 
-    if (name.empty())
+    if ((name.empty() || name == "generic") && pixel_renderer_name == "tile-adaptive")
     {
+        if (m_sample_renderer_factory.get() == nullptr)
+        {
+            RENDERER_LOG_ERROR("cannot use the adaptive tile renderer without a sample renderer.");
+            return false;
+        }
+
+        if (m_shading_result_framebuffer_factory.get() == nullptr)
+        {
+            RENDERER_LOG_ERROR("cannot use the adaptive tile renderer without a shading result framebuffer.");
+            return false;
+        }
+
+        m_tile_renderer_factory.reset(
+            new AdaptiveTileRendererFactory(
+                m_frame,
+                m_sample_renderer_factory.get(),
+                m_shading_result_framebuffer_factory.get(),
+                get_child_and_inherit_globals(m_params, "adaptive_tile_renderer")));
+
         return true;
     }
-    else if (name == "generic")
+    if (name == "generic")
     {
         if (m_pixel_renderer_factory.get() == nullptr)
         {
@@ -441,6 +466,10 @@ bool RendererComponents::create_tile_renderer_factory()
     else if (name == "debug")
     {
         m_tile_renderer_factory.reset(new DebugTileRendererFactory());
+        return true;
+    }
+    else if (name.empty())
+    {
         return true;
     }
     else

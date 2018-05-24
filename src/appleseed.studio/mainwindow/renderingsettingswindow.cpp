@@ -474,6 +474,10 @@ namespace
             create_direct_link("adaptive_sampler.quality",              "adaptive_pixel_renderer.quality");
             create_direct_link("adaptive_sampler.enable_diagnostics",   "adaptive_pixel_renderer.enable_diagnostics");
 
+            create_direct_link("tile_adaptive_sampler.min_samples",     "adaptive_tile_renderer.min_samples");
+            create_direct_link("tile_adaptive_sampler.max_samples",     "adaptive_tile_renderer.max_samples");
+            create_direct_link("tile_adaptive_sampler.precision",       "adaptive_tile_renderer.precision");
+
             load_directly_linked_values(config);
         }
 
@@ -491,6 +495,7 @@ namespace
         QComboBox*  m_image_plane_sampler_combo;
         QSpinBox*   m_image_plane_sampler_passes;
         QGroupBox*  m_uniform_image_plane_sampler;
+        QGroupBox*  m_tile_adaptive_image_plane_sampler;
         QGroupBox*  m_adaptive_image_plane_sampler;
         QCheckBox*  m_uniform_sampler_decorrelate_pixels;
         QCheckBox*  m_uniform_sampler_force_aa;
@@ -510,6 +515,7 @@ namespace
             m_image_plane_sampler_combo->setToolTip(m_params_metadata.get_path("sampling_mode.help"));
             m_image_plane_sampler_combo->addItem("Uniform", "uniform");
             m_image_plane_sampler_combo->addItem("Adaptive", "adaptive");
+            m_image_plane_sampler_combo->addItem("Adaptive Tile", "tile-adaptive");
             m_image_plane_sampler_combo->setCurrentIndex(-1);
             sublayout->addRow("Sampler:", m_image_plane_sampler_combo);
 
@@ -529,6 +535,7 @@ namespace
 
             create_image_plane_sampling_uniform_sampler_settings(layout);
             create_image_plane_sampling_adaptive_sampler_settings(layout);
+            create_image_plane_sampling_tile_adaptive_sampler_settings(layout);
         }
 
         void create_image_plane_sampling_uniform_sampler_settings(QHBoxLayout* parent)
@@ -562,6 +569,30 @@ namespace
             connect(
                 m_image_plane_sampler_passes, SIGNAL(valueChanged(const int)),
                 SLOT(slot_changed_image_plane_sampler_passes(const int)));
+        }
+
+        void create_image_plane_sampling_tile_adaptive_sampler_settings(QHBoxLayout* parent)
+        {
+            m_tile_adaptive_image_plane_sampler = new QGroupBox("Tile Adaptive Sampler");
+            parent->addWidget(m_tile_adaptive_image_plane_sampler);
+
+            QVBoxLayout* layout = create_vertical_layout();
+            m_tile_adaptive_image_plane_sampler->setLayout(layout);
+
+            QFormLayout* sublayout = create_form_layout();
+            layout->addLayout(sublayout);
+
+            QSpinBox* min_samples = create_integer_input("tile_adaptive_sampler.min_samples", 1, 1000000, 1);
+            min_samples->setToolTip(m_params_metadata.get_path("adaptive_tile_renderer.min_samples.help"));
+            sublayout->addRow("Min Samples:", min_samples);
+
+            QSpinBox* max_samples = create_integer_input("tile_adaptive_sampler.max_samples", 1, 1000000, 1);
+            max_samples->setToolTip(m_params_metadata.get_path("adaptive_tile_renderer.max_samples.help"));
+            sublayout->addRow("Max Samples:", max_samples);
+
+            QDoubleSpinBox* precision = create_double_input("tile_adaptive_sampler.precision", 0.0001, 5.0, 10, 0.2);
+            precision->setToolTip(m_params_metadata.get_path("adaptive_tile_renderer.precision.help"));
+            sublayout->addRow("Precision:", precision);
         }
 
         void create_image_plane_sampling_adaptive_sampler_settings(QHBoxLayout* parent)
@@ -599,6 +630,7 @@ namespace
 
             m_uniform_image_plane_sampler->setEnabled(sampler == "uniform");
             m_adaptive_image_plane_sampler->setEnabled(sampler == "adaptive");
+            m_tile_adaptive_image_plane_sampler->setEnabled(sampler == "tile-adaptive");
         }
 
         void slot_changed_image_plane_sampler_passes(const int passes)
