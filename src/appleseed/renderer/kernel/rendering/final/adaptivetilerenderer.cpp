@@ -134,7 +134,16 @@ namespace
 
         void print_settings() const override
         {
-            //m_pixel_renderer->print_settings();
+            RENDERER_LOG_INFO(
+                "adaptive tile renderer settings:\n"
+                "  min samples                   %s\n"
+                "  max samples                   %s\n"
+                "  error threshold               %f\n"
+                "  diagnostics                   %s",
+                pretty_uint(m_params.m_min_samples).c_str(),
+                pretty_uint(m_params.m_max_samples).c_str(),
+                m_params.m_error_threshold,
+                "on");
         }
 
         void render_tile(
