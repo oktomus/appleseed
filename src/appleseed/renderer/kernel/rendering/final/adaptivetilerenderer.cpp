@@ -36,6 +36,7 @@
 #include "renderer/kernel/aov/aovaccumulator.h"
 #include "renderer/kernel/aov/imagestack.h"
 #include "renderer/kernel/aov/tilestack.h"
+#include "renderer/kernel/rendering/final/variationtracker.h"
 #include "renderer/kernel/rendering/isamplerenderer.h"
 #include "renderer/kernel/rendering/ishadingresultframebufferfactory.h"
 #include "renderer/kernel/rendering/pixelcontext.h"
@@ -78,6 +79,23 @@ namespace renderer
 
 namespace
 {
+    //
+    // RGB Variation Tracker
+    //
+
+    class RGBVariationTracker
+    {
+      public:
+          VariationTracker r, g, b;
+
+          void reset_variations()
+          {
+              r.reset_variation();
+              g.reset_variation();
+              b.reset_variation();
+          }
+    };
+
     //
     // Adaptive tile renderer.
     //
@@ -126,6 +144,8 @@ namespace
             const size_t    pass_hash,
             IAbortSwitch&   abort_switch) override
         {
+            vector<RGBVariationTracker> pixel_trackers(m_pixel_ordering.size());
+
             const size_t frame_width = frame.image().properties().m_canvas_width;
             const size_t aov_count = frame.aov_images().size();
 
@@ -182,22 +202,7 @@ namespace
                     tile_bbox);
             assert(framebuffer);
 
-            // Begin Tile
-            const int m_scratch_fb_half_width = truncate<int>(ceil(frame.get_filter().get_xradius()));
-            const int m_scratch_fb_half_height = truncate<int>(ceil(frame.get_filter().get_yradius()));
-
-            const CanvasProperties& properties = frame.image().properties();
-
-            unique_ptr<ShadingResultFrameBuffer>    m_scratch_fb;
-            m_scratch_fb.reset(
-                new ShadingResultFrameBuffer(
-                    properties.m_tile_width,
-                    properties.m_tile_height,
-                    frame.aov_images().size(),
-                    frame.get_filter()));
-            m_scratch_fb->clear();
-
-            // Pixel begin
+            // Pixel begin.
             for (size_t i = 0, e = m_pixel_ordering.size(); i < e; ++i)
             {
                 // Retrieve the coordinates of the pixel in the padded tile.
@@ -212,11 +217,14 @@ namespace
                 m_aov_accumulators.on_pixel_begin(pi);
             }
 
+            // Pixel rendering.
             size_t samples_so_far = 0;
 
             while (true)
             {
                 const size_t remaining_samples = m_params.m_max_samples - samples_so_far;
+
+                float block_variation = 0;
 
                 if (remaining_samples < 1)
                     break;
@@ -252,7 +260,8 @@ namespace
                     // Render this pixel.
                     {
                         const size_t pixel_index = pi.y * frame_width + pi.x;
-                        const size_t instance = hash_uint32(static_cast<uint32>(pass_hash + pixel_index));
+                        const size_t instance = hash_uint32(static_cast<uint32>(pass_hash + pixel_index * remaining_samples));
+
                         SamplingContext::RNGType rng(pass_hash, instance);
                         SamplingContext sampling_context(
                             rng,
@@ -261,7 +270,10 @@ namespace
                             0,                          // number of samples -- unknown
                             instance);                  // initial instance number
 
-                        for (size_t i = 0; i < batch_size; ++i)
+                        RGBVariationTracker & pixel_tracker = pixel_trackers[i];
+                        pixel_tracker.reset_variations();
+
+                        for (size_t j = 0; j < batch_size; ++j)
                         {
                             // Generate a uniform sample in [0,1)^2.
                             const Vector2d s = sampling_context.next2<Vector2d>();
@@ -290,19 +302,31 @@ namespace
                             }
 
                             // Merge the sample into the scratch framebuffer.
-                            m_scratch_fb->add(
+                            framebuffer->add(
                                 static_cast<float>(pt.x + s.x),
                                 static_cast<float>(pt.y + s.y),
                                 shading_result);
+
+                            pixel_tracker.r.insert(shading_result.m_main[0]);
+                            pixel_tracker.g.insert(shading_result.m_main[1]);
+                            pixel_tracker.b.insert(shading_result.m_main[2]);
                         }
+
+                        block_variation += (
+                            pixel_tracker.r.get_variation()
+                            + pixel_tracker.g.get_variation()
+                            + pixel_tracker.b.get_variation());
                     }
                 }
                 samples_so_far += batch_size;
+
+                block_variation /= m_pixel_ordering.size();
+
+                if (block_variation > 0 && block_variation <= 3 * m_params.m_error_threshold)
+                    break;
             }
 
-            const float rcp_sample_count = 1.0f / samples_so_far;
-
-            // Pixel end
+            // Pixel end.
             for (size_t i = 0, e = m_pixel_ordering.size(); i < e; ++i)
             {
                 // Retrieve the coordinates of the pixel in the padded tile.
@@ -313,18 +337,6 @@ namespace
                     continue;
 
                 const Vector2i pi(tile_origin_x + pt.x, tile_origin_y + pt.y);
-
-                // Merge the scratch framebuffer into the output framebuffer.
-                if (tile_bbox.contains(pt))
-                {
-                    framebuffer->merge(                 // destination
-                        pt.x,                           // destination X
-                        pt.y,                           // destination Y
-                        *m_scratch_fb.get(),            // source
-                        pt.x,                           // source X
-                        pt.y,                           // source Y
-                        rcp_sample_count);              // scaling
-                }
 
                 m_aov_accumulators.on_pixel_end(pi);
             }
@@ -338,8 +350,10 @@ namespace
             // Inform the AOV accumulators that we are done rendering a tile.
             m_aov_accumulators.on_tile_end(frame, tile_x, tile_y);
 
-            // Inform the pixel renderer that we are done rendering the tile.
-            //m_pixel_renderer->on_tile_end(frame, tile, aov_tiles);
+            RENDERER_LOG_DEBUG("Tile %zu,%zu: %zu sample saved.",
+                tile_x,
+                tile_y,
+                m_params.m_max_samples - samples_so_far);
         }
 
         StatisticsVector get_statistics() const override
