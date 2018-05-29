@@ -54,6 +54,7 @@
 #include "foundation/math/filter.h"
 #include "foundation/math/hash.h"
 #include "foundation/math/ordering.h"
+#include "foundation/math/population.h"
 #include "foundation/math/scalar.h"
 #include "foundation/math/vector.h"
 #include "foundation/platform/arch.h"
@@ -125,6 +126,9 @@ namespace
           , m_aov_accumulators(frame)
           , m_framebuffer_factory(framebuffer_factory)
           , m_params(params)
+          , m_total_samples(0)
+          , m_total_saved_samples(0)
+          , m_max_samples(0)
         {
             compute_tile_margins(frame, thread_index == 0);
             compute_pixel_ordering(frame);
@@ -202,6 +206,8 @@ namespace
             tile_bbox.min.y -= tile_origin_y;
             tile_bbox.max.x -= tile_origin_x;
             tile_bbox.max.y -= tile_origin_y;
+
+            const size_t pixel_count = (tile_bbox.max.x - tile_bbox.min.x) * (tile_bbox.max.y - tile_bbox.min.y);
 
             // Pad the bounding box with tile margins.
             AABB2i padded_tile_bbox;
@@ -369,7 +375,7 @@ namespace
                 {
                     Color<float, 2> values;
 
-                    values[0] = saturate(block_variation / m_params.m_error_threshold);
+                    values[0] = saturate(block_variation);
                     values[1] =
                         m_params.m_min_samples == m_params.m_max_samples
                         ? 1.0f
@@ -387,6 +393,13 @@ namespace
                 on_pixel_end(pi, pt, tile_bbox, m_aov_accumulators);
             }
 
+            // Update statistics.
+            m_total_samples += samples_so_far * pixel_count;
+            m_spp.insert(samples_so_far);
+            m_total_saved_samples += (m_params.m_max_samples - samples_so_far) * pixel_count;
+            m_saved_samples.insert(m_params.m_max_samples - samples_so_far);
+            m_max_samples += pixel_count * m_params.m_max_samples;
+
             // Develop the framebuffer to the tile.
             framebuffer->develop_to_tile(tile, aov_tiles);
 
@@ -398,11 +411,6 @@ namespace
 
             // Inform the pixel renderer that we are done rendering the tile.
             on_tile_end(frame, tile, aov_tiles);
-
-            RENDERER_LOG_DEBUG("Tile %zu,%zu: %zu sample saved.",
-                tile_x,
-                tile_y,
-                m_params.m_max_samples - samples_so_far);
         }
 
         void on_tile_begin(
@@ -463,7 +471,18 @@ namespace
 
         StatisticsVector get_statistics() const override
         {
-            return m_sample_renderer->get_statistics();
+            Statistics stats;
+            stats.insert("total samples", m_total_samples);
+            stats.insert("spp", m_spp);
+            stats.insert("total samples saved", m_total_saved_samples);
+            stats.insert("samples saved", m_saved_samples);
+            stats.insert("max samples", m_max_samples);
+
+            StatisticsVector vec;
+            vec.insert("adaptive tile renderer statistics", stats);
+            vec.merge(m_sample_renderer->get_statistics());
+
+            return vec;
         }
 
         size_t get_max_samples_per_pixel() const override
@@ -553,6 +572,11 @@ namespace
         const Parameters                        m_params;
         size_t                                  m_variation_aov_index;
         size_t                                  m_samples_aov_index;
+        size_t                                  m_total_samples;
+        Population<uint64>                      m_spp;
+        size_t                                  m_total_saved_samples;
+        Population<uint64>                      m_saved_samples;
+        size_t                                  m_max_samples;
         unique_ptr<Tile>                        m_diagnostics;
 
         static Color4f colorize_samples(const float value)
