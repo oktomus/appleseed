@@ -5,8 +5,7 @@
 //
 // This software is released under the MIT license.
 //
-// Copyright (c) 2010-2013 Francois Beaune, Jupiter Jazz Limited
-// Copyright (c) 2014-2018 Francois Beaune, The appleseedhq Organization
+// Copyright (c) 2018 Kevin Masson, The appleseedhq Organization
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -52,6 +51,7 @@
 #include "foundation/image/tile.h"
 #include "foundation/math/aabb.h"
 #include "foundation/math/filter.h"
+#include "foundation/math/fastmath.h"
 #include "foundation/math/hash.h"
 #include "foundation/math/ordering.h"
 #include "foundation/math/population.h"
@@ -81,24 +81,6 @@ namespace renderer
 
 namespace
 {
-    //
-    // RGB Variation Tracker.
-    //
-
-    class RGBVariationTracker
-    {
-      public:
-          VariationTracker r, g, b;
-
-          void reset_variations()
-          {
-              r.reset_variation();
-              g.reset_variation();
-              b.reset_variation();
-          }
-    };
-
-
     //
     // Adaptive tile renderer.
     //
@@ -175,8 +157,6 @@ namespace
             const size_t    pass_hash,
             IAbortSwitch&   abort_switch) override
         {
-            vector<RGBVariationTracker> pixel_trackers(m_pixel_ordering.size());
-
             const size_t frame_width = frame.image().properties().m_canvas_width;
             const size_t aov_count = frame.aov_images().size();
 
@@ -207,8 +187,6 @@ namespace
             tile_bbox.max.x -= tile_origin_x;
             tile_bbox.max.y -= tile_origin_y;
 
-            const size_t pixel_count = (tile_bbox.max.x - tile_bbox.min.x) * (tile_bbox.max.y - tile_bbox.min.y);
-
             // Pad the bounding box with tile margins.
             AABB2i padded_tile_bbox;
             padded_tile_bbox.min.x = tile_bbox.min.x - m_margin_width;
@@ -235,6 +213,17 @@ namespace
                     tile_bbox);
             assert(framebuffer);
 
+            // Create the buffer into which we will accumulate every second samples.
+            ShadingResultFrameBuffer* second_framebuffer =
+                m_framebuffer_factory->create(
+                    frame,
+                    tile_x,
+                    tile_y,
+                    tile_bbox);
+            assert(second_framebuffer);
+
+            const size_t pixel_count = framebuffer->get_width() * framebuffer->get_height();
+
             // Pixel begin.
             for (size_t i = 0, e = m_pixel_ordering.size(); i < e; ++i)
             {
@@ -252,13 +241,11 @@ namespace
 
             // Pixel rendering.
             size_t samples_so_far = 0;
-            float block_variation = 0;
+            float block_error = 0;
 
             while (true)
             {
                 const size_t remaining_samples = m_params.m_max_samples - samples_so_far;
-
-                block_variation = 0;
 
                 if (remaining_samples < 1)
                     break;
@@ -304,8 +291,7 @@ namespace
                             0,                          // number of samples -- unknown
                             instance);                  // initial instance number
 
-                        RGBVariationTracker & pixel_tracker = pixel_trackers[i];
-                        pixel_tracker.reset_variations();
+                        bool second = false;
 
                         for (size_t j = 0; j < batch_size; ++j)
                         {
@@ -341,22 +327,65 @@ namespace
                                 static_cast<float>(pt.y + s.y),
                                 shading_result);
 
-                            pixel_tracker.r.insert(shading_result.m_main[0]);
-                            pixel_tracker.g.insert(shading_result.m_main[1]);
-                            pixel_tracker.b.insert(shading_result.m_main[2]);
-                        }
+                            if (second)
+                            {
+                                second_framebuffer->add(
+                                        static_cast<float>(pt.x + s.x),
+                                        static_cast<float>(pt.y + s.y),
+                                        shading_result);
+                            }
 
-                        block_variation += (
-                            pixel_tracker.r.get_variation()
-                            + pixel_tracker.g.get_variation()
-                            + pixel_tracker.b.get_variation());
+                            second = !second;
+                        }
                     }
                 }
+
+
+                // Error metric.
+                block_error = 0;
+                const float* main_ptr = framebuffer->pixel(0);
+                const float* second_ptr = second_framebuffer->pixel(0);
+
+                for (size_t y = 0, h = framebuffer->get_height(); y < h; ++y)
+                {
+                    for (size_t x = 0, w = framebuffer->get_width(); x < w; ++x)
+                    {
+                        // Weight.
+                        const float main_weight = *main_ptr++;
+                        const float main_rcp_weight = main_weight == 0.0f ? 0.0f : 1.0f / main_weight;
+                        const float second_weight = *second_ptr++;
+                        const float second_rcp_weight = second_weight == 0.0f ? 0.0f : 1.0f / second_weight;
+
+                        // Get color.
+                        Color4f main_color(main_ptr[0], main_ptr[1], main_ptr[2], main_ptr[3]);
+                        main_color = main_color * main_rcp_weight;
+                        main_ptr += 4;
+
+                        Color4f second_color(second_ptr[0], second_ptr[1], second_ptr[2], second_ptr[3]);
+                        second_color = second_color * second_rcp_weight;
+                        second_ptr += 4;
+
+                        block_error += (
+                            abs(main_color.r - second_color.r)
+                            + abs(main_color.g - second_color.g)
+                            + abs(main_color.b - second_color.b)
+                            ) / fast_sqrt(main_color.r + main_color.g + main_color.b);
+
+                        // Ignore AOVs.
+                        main_ptr += 4 * aov_count;
+                        second_ptr += 4 * aov_count;
+                    }
+                }
+
                 samples_so_far += batch_size;
+                block_error *= (1.0f / pixel_count);
 
-                block_variation /= m_pixel_ordering.size();
+                RENDERER_LOG_DEBUG("Tile %zu,%zu: error is %f.",
+                        tile_x,
+                        tile_y,
+                        block_error);
 
-                if (block_variation > 0 && block_variation <= 3 * m_params.m_error_threshold)
+                if (samples_so_far > 1 && block_error <= m_params.m_error_threshold)
                     break;
             }
 
@@ -375,7 +404,7 @@ namespace
                 {
                     Color<float, 2> values;
 
-                    values[0] = saturate(block_variation);
+                    values[0] = block_error;
                     values[1] =
                         m_params.m_min_samples == m_params.m_max_samples
                         ? 1.0f
@@ -399,6 +428,12 @@ namespace
             m_total_saved_samples += (m_params.m_max_samples - samples_so_far) * pixel_count;
             m_saved_samples.insert(m_params.m_max_samples - samples_so_far);
             m_max_samples += pixel_count * m_params.m_max_samples;
+            m_block_error.insert(block_error);
+
+            RENDERER_LOG_DEBUG("Tile %zu,%zu: %zu sample saved.",
+                tile_x,
+                tile_y,
+                m_params.m_max_samples - samples_so_far);
 
             // Develop the framebuffer to the tile.
             framebuffer->develop_to_tile(tile, aov_tiles);
@@ -473,10 +508,11 @@ namespace
         {
             Statistics stats;
             stats.insert("total samples", m_total_samples);
-            stats.insert("spp", m_spp);
+            stats.insert("samples/pixel", m_spp);
             stats.insert("total samples saved", m_total_saved_samples);
-            stats.insert("samples saved", m_saved_samples);
+            stats.insert("samples saved/pixel", m_saved_samples);
             stats.insert("max samples", m_max_samples);
+            stats.insert("block error", m_block_error);
 
             StatisticsVector vec;
             vec.insert("adaptive tile renderer statistics", stats);
@@ -577,6 +613,7 @@ namespace
         size_t                                  m_total_saved_samples;
         Population<uint64>                      m_saved_samples;
         size_t                                  m_max_samples;
+        Population<uint64>                      m_block_error;
         unique_ptr<Tile>                        m_diagnostics;
 
         static Color4f colorize_samples(const float value)
@@ -588,9 +625,7 @@ namespace
 
         static Color4f colorize_variation(const float value)
         {
-            static const Color4f Red(1.0f, 0.0f, 0.0f, 1.0f);
-            static const Color4f Blue(0.0f, 0.0f, 1.0f, 1.0f);
-            return lerp(Blue, Red, saturate(value));
+            return Color4f(0.0f, value, 0.0f, 1.0f);
         }
     };
 }

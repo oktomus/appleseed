@@ -516,7 +516,7 @@ namespace
             m_image_plane_sampler_combo->setToolTip(m_params_metadata.get_path("sampling_mode.help"));
             m_image_plane_sampler_combo->addItem("Uniform", "uniform");
             m_image_plane_sampler_combo->addItem("Adaptive", "adaptive");
-            m_image_plane_sampler_combo->addItem("Adaptive Tile", "tile-adaptive");
+            m_image_plane_sampler_combo->addItem("Adaptive Tile", "adaptive_tile");
             m_image_plane_sampler_combo->setCurrentIndex(-1);
             sublayout->addRow("Sampler:", m_image_plane_sampler_combo);
 
@@ -635,7 +635,7 @@ namespace
 
             m_uniform_image_plane_sampler->setEnabled(sampler == "uniform");
             m_adaptive_image_plane_sampler->setEnabled(sampler == "adaptive");
-            m_tile_adaptive_image_plane_sampler->setEnabled(sampler == "tile-adaptive");
+            m_tile_adaptive_image_plane_sampler->setEnabled(sampler == "adaptive_tile");
         }
 
         void slot_changed_image_plane_sampler_passes(const int passes)

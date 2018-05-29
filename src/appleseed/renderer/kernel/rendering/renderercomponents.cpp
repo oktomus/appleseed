@@ -365,7 +365,7 @@ bool RendererComponents::create_pixel_renderer_factory()
 
         return true;
     }
-    else if (name == "tile-adaptive")
+    else if (name == "adaptive_tile")
     {
         return true;
     }
@@ -412,7 +412,7 @@ bool RendererComponents::create_tile_renderer_factory()
     const string name = m_params.get_optional<string>("tile_renderer", "");
     const string pixel_renderer_name = m_params.get_optional<string>("pixel_renderer", "");
 
-    if ((name.empty() || name == "generic") && pixel_renderer_name == "tile-adaptive")
+    if ((name.empty() || name == "generic") && pixel_renderer_name == "adaptive_tile")
     {
         if (m_sample_renderer_factory.get() == nullptr)
         {
