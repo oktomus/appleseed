@@ -460,23 +460,24 @@ namespace
             create_image_plane_sampling_general_settings(layout);
             create_image_plane_sampling_sampler_settings(layout);
 
-            create_direct_link("general.sampler",                       "pixel_renderer", "uniform");
+            create_direct_link("general.sampler",                           "pixel_renderer", "uniform");
 
-            create_direct_link("general.passes",                        "generic_frame_renderer.passes");
+            create_direct_link("general.passes",                            "generic_frame_renderer.passes");
 
-            create_direct_link("uniform_sampler.samples",               "uniform_pixel_renderer.samples");
-            create_direct_link("uniform_sampler.force_antialiasing",    "uniform_pixel_renderer.force_antialiasing");
-            create_direct_link("uniform_sampler.decorrelate_pixels",    "uniform_pixel_renderer.decorrelate_pixels");
-            create_direct_link("uniform_sampler.enable_diagnostics",    "uniform_pixel_renderer.enable_diagnostics");
+            create_direct_link("uniform_sampler.samples",                   "uniform_pixel_renderer.samples");
+            create_direct_link("uniform_sampler.force_antialiasing",        "uniform_pixel_renderer.force_antialiasing");
+            create_direct_link("uniform_sampler.decorrelate_pixels",        "uniform_pixel_renderer.decorrelate_pixels");
+            create_direct_link("uniform_sampler.enable_diagnostics",        "uniform_pixel_renderer.enable_diagnostics");
 
-            create_direct_link("adaptive_sampler.min_samples",          "adaptive_pixel_renderer.min_samples");
-            create_direct_link("adaptive_sampler.max_samples",          "adaptive_pixel_renderer.max_samples");
-            create_direct_link("adaptive_sampler.quality",              "adaptive_pixel_renderer.quality");
-            create_direct_link("adaptive_sampler.enable_diagnostics",   "adaptive_pixel_renderer.enable_diagnostics");
+            create_direct_link("adaptive_sampler.min_samples",              "adaptive_pixel_renderer.min_samples");
+            create_direct_link("adaptive_sampler.max_samples",              "adaptive_pixel_renderer.max_samples");
+            create_direct_link("adaptive_sampler.quality",                  "adaptive_pixel_renderer.quality");
+            create_direct_link("adaptive_sampler.enable_diagnostics",       "adaptive_pixel_renderer.enable_diagnostics");
 
-            create_direct_link("tile_adaptive_sampler.min_samples",     "adaptive_tile_renderer.min_samples");
-            create_direct_link("tile_adaptive_sampler.max_samples",     "adaptive_tile_renderer.max_samples");
-            create_direct_link("tile_adaptive_sampler.precision",       "adaptive_tile_renderer.precision");
+            create_direct_link("tile_adaptive_sampler.min_samples",         "adaptive_tile_renderer.min_samples");
+            create_direct_link("tile_adaptive_sampler.max_samples",         "adaptive_tile_renderer.max_samples");
+            create_direct_link("tile_adaptive_sampler.precision",           "adaptive_tile_renderer.precision");
+            create_direct_link("tile_adaptive_sampler.enable_diagnostics",  "adaptive_tile_renderer.enable_diagnostics");
 
             load_directly_linked_values(config);
         }
@@ -593,6 +594,10 @@ namespace
             QDoubleSpinBox* precision = create_double_input("tile_adaptive_sampler.precision", 0.0001, 5.0, 10, 0.2);
             precision->setToolTip(m_params_metadata.get_path("adaptive_tile_renderer.precision.help"));
             sublayout->addRow("Precision:", precision);
+
+            QCheckBox* enable_diagnostics = create_checkbox("tile_adaptive_sampler.enable_diagnostics", "Enable Diagnostic AOVs");
+            enable_diagnostics->setToolTip(m_params_metadata.get_path("adaptive_tile_renderer.enable_diagnostics.help"));
+            sublayout->addWidget(enable_diagnostics);
         }
 
         void create_image_plane_sampling_adaptive_sampler_settings(QHBoxLayout* parent)
