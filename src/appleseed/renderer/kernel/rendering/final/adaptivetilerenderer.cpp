@@ -698,7 +698,7 @@ Dictionary AdaptiveTileRendererFactory::get_params_metadata()
         "precision",
         Dictionary()
             .insert("type", "float")
-            .insert("default", "0.0002")
+            .insert("default", "0.003")
             .insert("label", "Precision")
             .insert("help", "Precision factor, the lower it is, the more it will likely sample a pixel"));
 
