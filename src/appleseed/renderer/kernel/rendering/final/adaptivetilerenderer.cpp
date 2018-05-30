@@ -365,6 +365,16 @@ namespace
                         second_color = second_color * second_rcp_weight;
                         second_ptr += 4;
 
+                        main_color.unpremultiply();
+                        main_color.rgb() = fast_linear_rgb_to_srgb(main_color.rgb());
+                        main_color = saturate(main_color);
+                        main_color.premultiply();
+
+                        second_color.unpremultiply();
+                        second_color.rgb() = fast_linear_rgb_to_srgb(second_color.rgb());
+                        second_color = saturate(second_color);
+                        second_color.premultiply();
+
                         block_error += (
                             abs(main_color.r - second_color.r)
                             + abs(main_color.g - second_color.g)
