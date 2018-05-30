@@ -591,7 +591,7 @@ namespace
             max_samples->setToolTip(m_params_metadata.get_path("adaptive_tile_renderer.max_samples.help"));
             sublayout->addRow("Max Samples:", max_samples);
 
-            QDoubleSpinBox* precision = create_double_input("tile_adaptive_sampler.precision", 0.0001, 5.0, 10, 0.2);
+            QDoubleSpinBox* precision = create_double_input("tile_adaptive_sampler.precision", 0.00001, 5.0, 5, 0.0001);
             precision->setToolTip(m_params_metadata.get_path("adaptive_tile_renderer.precision.help"));
             sublayout->addRow("Precision:", precision);
 
