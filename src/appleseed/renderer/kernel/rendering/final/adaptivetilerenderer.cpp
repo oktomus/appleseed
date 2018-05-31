@@ -740,7 +740,7 @@ namespace
             stats.insert("total samples saved", m_total_saved_samples);
             stats.insert("samples saved/pixel", m_saved_samples);
             stats.insert("max samples", m_max_samples);
-            stats.insert("block error", m_block_error);
+            stats.insert("block error", m_block_error, 4);
 
             StatisticsVector vec;
             vec.insert("adaptive tile renderer statistics", stats);
@@ -841,7 +841,7 @@ namespace
         size_t                                  m_total_saved_samples;
         Population<uint64>                      m_saved_samples;
         size_t                                  m_max_samples;
-        Population<uint64>                      m_block_error;
+        Population<float>                       m_block_error;
         unique_ptr<Tile>                        m_diagnostics;
 
         static Color4f colorize_samples(const float value)
