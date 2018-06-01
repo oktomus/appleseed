@@ -221,7 +221,7 @@ namespace
                     // Render this pixel.
                     {
                         const size_t pixel_index = pi.y * frame_width + pi.x;
-                        const size_t instance = hash_uint32(static_cast<uint32>(pass_hash + pixel_index * samples_so_far));
+                        const size_t instance = hash_uint32(static_cast<uint32>(pass_hash + pixel_index * (m_spp + 1)));
 
                         SamplingContext::RNGType rng(pass_hash, instance);
                         SamplingContext sampling_context(
@@ -292,6 +292,18 @@ namespace
         {
             float error = 0;
 
+            AABB2i block_area = m_surface;
+            block_area.min.x = max(0, block_area.min.x);
+            block_area.min.y = max(0, block_area.min.y);
+            block_area.max.x = min(framebuffer->get_crop_window().max.x, static_cast<size_t>(block_area.max.x));
+            block_area.max.y = min(framebuffer->get_crop_window().max.y, static_cast<size_t>(block_area.max.y));
+
+            const float pixel_count = block_area.volume();
+
+            // Compute scale factor as the block area over the image area.
+            float scale_factor = sqrt((framebuffer->get_width() * framebuffer->get_height()) / pixel_count);
+
+
             // Loop over block pixels.
             for (int x = m_surface.min.x; x <= m_surface.max.x; ++x)
             {
@@ -337,7 +349,7 @@ namespace
                 }
             }
 
-            error *= (1.0f / m_area);
+            error *= (scale_factor / pixel_count);
             m_block_error = error;
             return error;
         }
@@ -565,6 +577,9 @@ namespace
 
             while (!all_converged)
             {
+                if (abort_switch.is_aborted())
+                    break;
+
                 const int remaining_samples = m_params.m_max_samples - samples_so_far;
 
                 if (remaining_samples < 1)
@@ -584,7 +599,7 @@ namespace
                 {
                     // Cancel any work done on this tile if rendering is aborted.
                     if (abort_switch.is_aborted())
-                        return;
+                        break;
 
                     RenderingBlock& rb = *rb_it;
                     const AABB2i& rb_aabb = rb.get_bb();
@@ -652,11 +667,7 @@ namespace
             for(auto rb_it = rendering_blocks.begin(); rb_it != rendering_blocks.end(); ++rb_it, ++rb_index)
             {
                 RenderingBlock& rb = *rb_it;
-                AABB2i rb_aabb = rb.get_bb();
-                rb_aabb.min.x = max(rb_aabb.min.x, tile_bbox.min.x);
-                rb_aabb.max.x = min(rb_aabb.max.x, tile_bbox.max.x);
-                rb_aabb.min.y = max(rb_aabb.min.y, tile_bbox.min.y);
-                rb_aabb.max.y = min(rb_aabb.max.y, tile_bbox.max.y);
+                const AABB2i& rb_aabb = rb.get_bb();
                 const size_t rb_pixel_count = rb_aabb.volume();
 
                 // Update statistics.
