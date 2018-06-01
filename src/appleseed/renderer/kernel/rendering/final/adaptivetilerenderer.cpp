@@ -69,6 +69,7 @@
 // Standard headers.
 #include <cassert>
 #include <cmath>
+#include <list>
 #include <memory>
 #include <string>
 #include <vector>
@@ -89,11 +90,33 @@ namespace renderer
 namespace
 {
     //
+    // Usefull function block.
+    //
+
+    // Compute a color from a given integer.
+    template <typename T>
+    inline Color3f integer_to_color(const T i)
+    {
+        const uint32 u = static_cast<uint32>(i);    // keep the low 32 bits
+
+        const uint32 x = hash_uint32(u);
+        const uint32 y = hash_uint32(u + 1);
+        const uint32 z = hash_uint32(u + 2);
+
+        return Color3f(
+            static_cast<float>(x) * (1.0f / 4294967295.0f),
+            static_cast<float>(y) * (1.0f / 4294967295.0f),
+            static_cast<float>(z) * (1.0f / 4294967295.0f));
+    }
+
+
+    //
     // Rendering block.
     //
 
     const size_t BlockMinAllowedSize = 8;
     const size_t BlockSplittingThreshold = 16;
+    const size_t SplittingFactor = 50;
 
     class RenderingBlock
     {
@@ -319,9 +342,9 @@ namespace
             return error;
         }
 
-        static void split_in_place(vector<RenderingBlock>& blocks, const size_t block_index)
+        static list<RenderingBlock>::iterator split_in_place(list<RenderingBlock>& blocks, list<RenderingBlock>::iterator it)
         {
-            const RenderingBlock& block = blocks[block_index];
+            const RenderingBlock& block = *it;
 
             assert(block.m_width >= BlockSplittingThreshold);
             assert(block.m_height >= BlockSplittingThreshold);
@@ -348,9 +371,13 @@ namespace
             assert(f_block.get_width() >= BlockMinAllowedSize && f_block.get_height() >= BlockMinAllowedSize);
             assert(s_block.get_width() >= BlockMinAllowedSize && s_block.get_height() >= BlockMinAllowedSize);
 
-            blocks.erase(blocks.begin() + block_index);
-            blocks.push_back(f_block);
-            blocks.push_back(s_block);
+            f_block.m_spp = s_block.m_spp = block.m_spp;
+
+            it = blocks.erase(it);
+            blocks.push_front(f_block);
+            blocks.push_front(s_block);
+
+            return it;
         }
 
       private:
@@ -402,8 +429,12 @@ namespace
             {
                 m_variation_aov_index = frame.create_extra_aov_image("variation");
                 m_samples_aov_index = frame.create_extra_aov_image("samples");
+                m_block_coverage_aov_index = frame.create_extra_aov_image("block-coverage");
 
-                if ((thread_index == 0) && (m_variation_aov_index == ~size_t(0) || m_samples_aov_index == ~size_t(0)))
+                if ((thread_index == 0) &&
+                    (m_variation_aov_index == ~size_t(0)
+                    || m_samples_aov_index == ~size_t(0)
+                    || m_block_coverage_aov_index == ~size_t(0)))
                 {
                     RENDERER_LOG_WARNING(
                         "could not create some of the diagnostic aovs, maximum number of aovs (" FMT_SIZE_T ") reached.",
@@ -424,10 +455,12 @@ namespace
                 "  min samples                   %s\n"
                 "  max samples                   %s\n"
                 "  error threshold               %f\n"
+                "  splitting threshold           %f\n"
                 "  diagnostics                   %s",
                 pretty_uint(m_params.m_min_samples).c_str(),
                 pretty_uint(m_params.m_max_samples).c_str(),
                 m_params.m_error_threshold,
+                m_params.m_error_threshold * SplittingFactor,
                 are_diagnostics_enabled() ? "on" : "off");
 
             m_sample_renderer->print_settings();
@@ -440,7 +473,7 @@ namespace
             const size_t    pass_hash,
             IAbortSwitch&   abort_switch) override
         {
-            vector<RenderingBlock>  rendering_blocks;
+            list<RenderingBlock>  rendering_blocks;
             const size_t            frame_width = frame.image().properties().m_canvas_width;
             const size_t            aov_count = frame.aov_images().size();
 
@@ -546,13 +579,14 @@ namespace
                 all_converged = true;
 
                 // For each block.
-                for(int j = 0; j < rendering_blocks.size(); ++j)
+                auto rb_it = rendering_blocks.begin();
+                while (rb_it != rendering_blocks.end())
                 {
                     // Cancel any work done on this tile if rendering is aborted.
                     if (abort_switch.is_aborted())
                         return;
 
-                    RenderingBlock& rb = rendering_blocks[j];
+                    RenderingBlock& rb = *rb_it;
                     const AABB2i& rb_aabb = rb.get_bb();
 
                     // Continue if block is already converged.
@@ -585,12 +619,12 @@ namespace
                     const float rb_error = rb.evaluate_error(framebuffer, second_framebuffer);
 
                     // Take a decision.
-                    if (rb_error <= m_params.m_error_threshold || remaining_samples - batch_size < 1)
+                    if (rb_error <= m_params.m_error_threshold)
                     {
                         rb.mark_as_converged();
-                        for (int y = rb_aabb.min.y; y < rb_aabb.max.y; ++y)
+                        for (int y = rb_aabb.min.y; y <= rb_aabb.max.y; ++y)
                         {
-                            for (int x = rb_aabb.min.x; x < rb_aabb.max.x; ++x)
+                            for (int x = rb_aabb.min.x; x <= rb_aabb.max.x; ++x)
                             {
                                 // Retrieve the coordinates of the pixel in the padded tile.
                                 const Vector2i pt(x, y);
@@ -598,10 +632,15 @@ namespace
                                 on_pixel_end(pi, pt, tile_bbox, m_aov_accumulators);
                             }
                         }
+                        rb_it++;
                     }
-                    else if(rb_error <= m_params.m_error_threshold * 256 && rb.get_width() >= BlockSplittingThreshold
-                        && rb.get_height() >= BlockSplittingThreshold)
-                        RenderingBlock::split_in_place(rendering_blocks, j);
+                    else if (remaining_samples - batch_size >= 1
+                            && rb_error <= m_params.m_error_threshold * SplittingFactor
+                            && rb.get_width() >= BlockSplittingThreshold
+                            && rb.get_height() >= BlockSplittingThreshold)
+                        rb_it = RenderingBlock::split_in_place(rendering_blocks, rb_it);
+                    else
+                        rb_it++;
                 }
 
                 samples_so_far = samples_then;
@@ -609,9 +648,10 @@ namespace
 
             // Pixels end.
             // For each block.
-            for(int j = 0; j < rendering_blocks.size(); ++j)
+            size_t rb_index = 0;
+            for(auto rb_it = rendering_blocks.begin(); rb_it != rendering_blocks.end(); ++rb_it, ++rb_index)
             {
-                RenderingBlock& rb = rendering_blocks[j];
+                RenderingBlock& rb = *rb_it;
                 AABB2i rb_aabb = rb.get_bb();
                 rb_aabb.min.x = max(rb_aabb.min.x, tile_bbox.min.x);
                 rb_aabb.max.x = min(rb_aabb.max.x, tile_bbox.max.x);
@@ -626,9 +666,9 @@ namespace
                 m_saved_samples.insert(m_params.m_max_samples - rb.get_spp());
                 m_block_error.insert(rb.get_error());
 
-                for (int y = rb_aabb.min.y; y < rb_aabb.max.y; ++y)
+                for (int y = rb_aabb.min.y; y <= rb_aabb.max.y; ++y)
                 {
-                    for (int x = rb_aabb.min.x; x < rb_aabb.max.x; ++x)
+                    for (int x = rb_aabb.min.x; x <= rb_aabb.max.x; ++x)
                     {
                         // Retrieve the coordinates of the pixel in the padded tile.
                         const Vector2i pt(x, y);
@@ -636,7 +676,7 @@ namespace
                         // Store diagnostics values in the diagnostics tile.
                         if (are_diagnostics_enabled() && tile_bbox.contains(pt))
                         {
-                            Color<float, 2> values;
+                            Color<float, 5> values;
 
                             values[0] = rb.get_error();
                             values[1] =
@@ -648,6 +688,11 @@ namespace
                                         static_cast<float>(m_params.m_max_samples),
                                         0.0f, 1.0f);
 
+                            Color3f rb_color = integer_to_color(pass_hash + rb_index);
+                            values[2] = rb_color[0];
+                            values[3] = rb_color[1];
+                            values[4] = rb_color[2];
+
                             m_diagnostics->set_pixel(pt.x, pt.y, values);
                         }
 
@@ -658,6 +703,7 @@ namespace
                         }
                     }
                 }
+                rb_index++;
             }
 
             // Update statistics.
@@ -686,7 +732,7 @@ namespace
             if (are_diagnostics_enabled())
             {
                 m_diagnostics.reset(new Tile(
-                    tile.get_width(), tile.get_height(), 2, PixelFormatFloat));
+                    tile.get_width(), tile.get_height(), 5, PixelFormatFloat));
             }
         }
 
@@ -706,7 +752,7 @@ namespace
                 {
                     for (size_t x = 0; x < width; ++x)
                     {
-                        Color<float, 2> values;
+                        Color<float, 5> values;
                         m_diagnostics->get_pixel(x, y, values);
 
                         if (m_variation_aov_index != ~size_t(0))
@@ -714,6 +760,9 @@ namespace
 
                         if (m_samples_aov_index != ~size_t(0))
                             aov_tiles.set_pixel(x, y, m_samples_aov_index, colorize_samples(values[1]));
+
+                        if (m_block_coverage_aov_index != ~size_t(0))
+                            aov_tiles.set_pixel(x, y, m_block_coverage_aov_index, Color4f(values[2], values[3], values[4], 1.0f));
                     }
                 }
             }
@@ -836,6 +885,7 @@ namespace
         const Parameters                        m_params;
         size_t                                  m_variation_aov_index;
         size_t                                  m_samples_aov_index;
+        size_t                                  m_block_coverage_aov_index;
         size_t                                  m_total_samples;
         Population<uint64>                      m_spp;
         size_t                                  m_total_saved_samples;
