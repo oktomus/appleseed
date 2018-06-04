@@ -663,7 +663,7 @@ namespace
 
             // Pixels end.
             // For each block.
-            size_t rb_index = 0;
+            size_t rb_index = 1;
             for(auto rb_it = rendering_blocks.begin(); rb_it != rendering_blocks.end(); ++rb_it, ++rb_index)
             {
                 RenderingBlock& rb = *rb_it;
@@ -719,6 +719,7 @@ namespace
 
             // Update statistics.
             m_max_samples += pixel_count * m_params.m_max_samples;
+            m_block_amount.insert(rendering_blocks.size());
 
             // Develop the framebuffer to the tile.
             framebuffer->develop_to_tile(tile, aov_tiles);
@@ -801,6 +802,7 @@ namespace
             stats.insert("samples saved/pixel", m_saved_samples);
             stats.insert("max samples", m_max_samples);
             stats.insert("block error", m_block_error, 4);
+            stats.insert("block amount/tile", m_block_amount);
 
             StatisticsVector vec;
             vec.insert("adaptive tile renderer statistics", stats);
@@ -901,6 +903,7 @@ namespace
         Population<uint64>                      m_spp;
         size_t                                  m_total_saved_samples;
         Population<uint64>                      m_saved_samples;
+        Population<size_t>                      m_block_amount;
         size_t                                  m_max_samples;
         Population<float>                       m_block_error;
         unique_ptr<Tile>                        m_diagnostics;
