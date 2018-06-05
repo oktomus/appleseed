@@ -89,8 +89,8 @@ namespace renderer
 namespace
 {
 
-    const size_t BlockMinAllowedSize = 8;
-    const size_t BlockSplittingThreshold = 16;
+    const size_t BlockMinAllowedSize = 4;
+    const size_t BlockSplittingThreshold = 8;
 
     //
     // Adaptive tile renderer.
@@ -669,6 +669,8 @@ namespace
                             0,                          // number of samples -- unknown
                             instance);                  // initial instance number
 
+                        bool second = false;
+
                         for (size_t j = 0; j < batch_size; ++j)
                         {
                             // Generate a uniform sample in [0,1)^2.
@@ -703,13 +705,15 @@ namespace
                                 static_cast<float>(pt.y + s.y),
                                 shading_result);
 
-                            if (j < batch_size - 1)
+                            if (second)
                             {
                                 second_framebuffer->add(
                                         static_cast<float>(pt.x + s.x),
                                         static_cast<float>(pt.y + s.y),
                                         shading_result);
                             }
+
+                            second = !second;
                         }
                         on_pixel_end(pi, pt, tile_bbox, m_aov_accumulators);
                     }
