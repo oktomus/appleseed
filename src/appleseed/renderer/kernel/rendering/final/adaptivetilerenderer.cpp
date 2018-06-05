@@ -69,7 +69,6 @@
 // Standard headers.
 #include <cassert>
 #include <cmath>
-#include <list>
 #include <memory>
 #include <string>
 #include <vector>
@@ -89,319 +88,9 @@ namespace renderer
 
 namespace
 {
-    //
-    // Usefull function block.
-    //
-
-    // Compute a color from a given integer.
-    template <typename T>
-    inline Color3f integer_to_color(const T i)
-    {
-        const uint32 u = static_cast<uint32>(i);    // keep the low 32 bits
-
-        const uint32 x = hash_uint32(u);
-        const uint32 y = hash_uint32(u + 1);
-        const uint32 z = hash_uint32(u + 2);
-
-        return Color3f(
-            static_cast<float>(x) * (1.0f / 4294967295.0f),
-            static_cast<float>(y) * (1.0f / 4294967295.0f),
-            static_cast<float>(z) * (1.0f / 4294967295.0f));
-    }
-
-
-    //
-    // Rendering block.
-    //
 
     const size_t BlockMinAllowedSize = 8;
     const size_t BlockSplittingThreshold = 16;
-    const size_t SplittingFactor = 50;
-
-    class RenderingBlock
-    {
-      public:
-        RenderingBlock(
-            const AABB2i&       surface)
-          : m_surface(surface)
-          , m_width(surface.max.x - surface.min.x + 1)
-          , m_height(surface.max.y - surface.min.y + 1)
-          , m_spp(0)
-          , m_converged(false)
-          , m_block_error(0)
-        {
-            m_area = m_width * m_height;
-        }
-
-        bool has_converged() const
-        {
-            return m_converged;
-        }
-
-        void mark_as_converged()
-        {
-            m_converged = true;
-        }
-
-        size_t get_area() const
-        {
-            return m_area;
-        }
-
-        size_t get_width() const
-        {
-            return m_width;
-        }
-
-        size_t get_height() const
-        {
-            return m_height;
-        }
-
-        const AABB2i& get_bb() const
-        {
-            return m_surface;
-        }
-
-        float get_error() const
-        {
-            return m_block_error;
-        }
-
-        size_t get_spp() const
-        {
-            return m_spp;
-        }
-
-        size_t sample(
-            const IAbortSwitch&                         abort_switch,
-            const size_t                                batch_size,
-            const size_t                                samples_so_far,
-            ShadingResultFrameBuffer*                   framebuffer,
-            ShadingResultFrameBuffer*                   second_framebuffer,
-            const int                                   tile_origin_x,
-            const int                                   tile_origin_y,
-            const Frame&                                frame,
-            const size_t                                frame_width,
-            const size_t                                pass_hash,
-            const SamplingContext::Mode                 sampling_mode,
-            const size_t                                aov_count,
-            AOVAccumulatorContainer&                    aov_accumulators,
-            const auto_release_ptr<ISampleRenderer>&    sample_renderer,
-            PixelRendererBase*                          pixel_renderer)
-        {
-            size_t invalid_samples = 0;
-
-            // Loop over block pixels.
-            for (int y = m_surface.min.y; y <= m_surface.max.y; ++y)
-            {
-                for (int x = m_surface.min.x; x <= m_surface.max.x; ++x)
-                {
-                    // Cancel any work done on this tile if rendering is aborted.
-                    if (abort_switch.is_aborted())
-                        return 0;
-
-                    // Retrieve the coordinates of the pixel in the padded tile.
-                    const Vector2i pt(x, y);
-
-                    // Skip pixels outside the intersection of the padded tile and the crop window.
-                    if (!m_surface.contains(pt))
-                        continue;
-
-                    const Vector2i pi(tile_origin_x + pt.x, tile_origin_y + pt.y);
-
-#ifdef DEBUG_BREAK_AT_PIXEL
-
-                    // Break in the debugger when this pixel is reached.
-                    if (pi == DEBUG_BREAK_AT_PIXEL)
-                        BREAKPOINT();
-
-#endif
-
-                    // Render this pixel.
-                    {
-                        const size_t pixel_index = pi.y * frame_width + pi.x;
-                        const size_t instance = hash_uint32(static_cast<uint32>(pass_hash + pixel_index * (m_spp + 1)));
-
-                        SamplingContext::RNGType rng(pass_hash, instance);
-                        SamplingContext sampling_context(
-                            rng,
-                            sampling_mode,
-                            2,                          // number of dimensions
-                            0,                          // number of samples -- unknown
-                            instance);                  // initial instance number
-
-                        bool second = false;
-
-                        for (size_t j = 0; j < batch_size; ++j)
-                        {
-                            // Generate a uniform sample in [0,1)^2.
-                            const Vector2d s = sampling_context.next2<Vector2d>();
-
-                            // Compute the sample position in NDC.
-                            const Vector2d sample_position = frame.get_sample_position(pi.x + s.x, pi.y + s.y);
-
-                            // Create a pixel context that identifies the pixel and sample currently being rendered.
-                            const PixelContext pixel_context(pi, sample_position);
-
-                            // Render the sample.
-                            ShadingResult shading_result(aov_count);
-                            SamplingContext child_sampling_context(sampling_context);
-                            sample_renderer->render_sample(
-                                child_sampling_context,
-                                pixel_context,
-                                sample_position,
-                                aov_accumulators,
-                                shading_result);
-
-                            // Ignore invalid samples.
-                            if (!shading_result.is_valid())
-                            {
-                                invalid_samples++;
-                                continue;
-                            }
-
-                            // Merge the sample into the scratch framebuffer.
-                            framebuffer->add(
-                                static_cast<float>(pt.x + s.x),
-                                static_cast<float>(pt.y + s.y),
-                                shading_result);
-
-                            if (second)
-                            {
-                                second_framebuffer->add(
-                                        static_cast<float>(pt.x + s.x),
-                                        static_cast<float>(pt.y + s.y),
-                                        shading_result);
-                            }
-
-                            second = !second;
-                        }
-                    }
-                }
-            }
-
-            m_spp += batch_size;
-
-            return invalid_samples;
-        }
-
-        float evaluate_error(
-            ShadingResultFrameBuffer*           framebuffer,
-            ShadingResultFrameBuffer*           second_framebuffer)
-        {
-            float error = 0;
-
-            AABB2i block_area = m_surface;
-            block_area.min.x = max(0, block_area.min.x);
-            block_area.min.y = max(0, block_area.min.y);
-            block_area.max.x = min(framebuffer->get_crop_window().max.x, static_cast<size_t>(block_area.max.x));
-            block_area.max.y = min(framebuffer->get_crop_window().max.y, static_cast<size_t>(block_area.max.y));
-
-            const float pixel_count = block_area.volume();
-
-            // Compute scale factor as the block area over the image area.
-            float scale_factor = sqrt((framebuffer->get_width() * framebuffer->get_height()) / pixel_count);
-
-
-            // Loop over block pixels.
-            for (int x = m_surface.min.x; x <= m_surface.max.x; ++x)
-            {
-                for (int y = m_surface.min.y; y <= m_surface.max.y; ++y)
-                {
-                    if (x < 0 || x >= framebuffer->get_width() ||
-                        y < 0 || y >= framebuffer->get_height())
-                        continue;
-
-                    const float* main_ptr = framebuffer->pixel(x, y);
-                    const float* second_ptr = second_framebuffer->pixel(x, y);
-
-                    // Weight.
-                    const float main_weight = *main_ptr++;
-                    const float main_rcp_weight = main_weight == 0.0f ? 0.0f : 1.0f / main_weight;
-                    const float second_weight = *second_ptr++;
-                    const float second_rcp_weight = second_weight == 0.0f ? 0.0f : 1.0f / second_weight;
-
-                    // Get color.
-                    Color4f main_color(main_ptr[0], main_ptr[1], main_ptr[2], main_ptr[3]);
-                    main_color = main_color * main_rcp_weight;
-                    main_ptr += 4;
-
-                    Color4f second_color(second_ptr[0], second_ptr[1], second_ptr[2], second_ptr[3]);
-                    second_color = second_color * second_rcp_weight;
-                    second_ptr += 4;
-
-                    main_color.unpremultiply();
-                    main_color.rgb() = fast_linear_rgb_to_srgb(main_color.rgb());
-                    main_color = saturate(main_color);
-                    main_color.premultiply();
-
-                    second_color.unpremultiply();
-                    second_color.rgb() = fast_linear_rgb_to_srgb(second_color.rgb());
-                    second_color = saturate(second_color);
-                    second_color.premultiply();
-
-                    error += (
-                            abs(main_color.r - second_color.r)
-                            + abs(main_color.g - second_color.g)
-                            + abs(main_color.b - second_color.b)
-                            ) / fast_sqrt(main_color.r + main_color.g + main_color.b);
-                }
-            }
-
-            error *= (scale_factor / pixel_count);
-            m_block_error = error;
-            return error;
-        }
-
-        static list<RenderingBlock>::iterator split_in_place(list<RenderingBlock>& blocks, list<RenderingBlock>::iterator it)
-        {
-            const RenderingBlock& block = *it;
-
-            assert(block.m_width >= BlockSplittingThreshold);
-            assert(block.m_height >= BlockSplittingThreshold);
-
-            AABB2i f_half = block.m_surface, s_half = block.m_surface;
-
-            if (block.m_width >= block.m_height)
-            {
-                // Split horizontaly.
-                size_t splitting_point = block.m_surface.min.x + static_cast<int>(block.m_width * 0.5f - 0.5f);
-                f_half.max.x = splitting_point;
-                s_half.min.x = splitting_point + 1;
-            }
-            else
-            {
-                // Split verticaly.
-                size_t splitting_point = block.m_surface.min.y + static_cast<int>(block.m_height * 0.5f - 0.5f);
-                f_half.max.y = splitting_point;
-                s_half.min.y = splitting_point + 1;
-            }
-
-            RenderingBlock f_block(f_half), s_block(s_half);
-
-            assert(f_block.get_width() >= BlockMinAllowedSize && f_block.get_height() >= BlockMinAllowedSize);
-            assert(s_block.get_width() >= BlockMinAllowedSize && s_block.get_height() >= BlockMinAllowedSize);
-
-            f_block.m_spp = s_block.m_spp = block.m_spp;
-
-            it = blocks.erase(it);
-            blocks.push_front(f_block);
-            blocks.push_front(s_block);
-
-            return it;
-        }
-
-      private:
-        AABB2i    m_surface;
-        size_t    m_area;
-        size_t    m_width;
-        size_t    m_height;
-        size_t    m_spp;
-        bool      m_converged;
-        float     m_block_error;
-    };
-
 
     //
     // Adaptive tile renderer.
@@ -433,6 +122,8 @@ namespace
           , m_total_samples(0)
           , m_total_saved_samples(0)
           , m_max_samples(0)
+          , m_total_pixel_converged(0)
+          , m_total_pixel(0)
         {
             compute_tile_margins(frame, thread_index == 0);
             compute_pixel_ordering(frame);
@@ -472,7 +163,7 @@ namespace
                 pretty_uint(m_params.m_min_samples).c_str(),
                 pretty_uint(m_params.m_max_samples).c_str(),
                 m_params.m_error_threshold,
-                m_params.m_error_threshold * SplittingFactor,
+                m_params.m_splitting_threshold,
                 are_diagnostics_enabled() ? "on" : "off");
 
             m_sample_renderer->print_settings();
@@ -485,9 +176,18 @@ namespace
             const size_t    pass_hash,
             IAbortSwitch&   abort_switch) override
         {
-            list<RenderingBlock>  rendering_blocks;
-            const size_t            frame_width = frame.image().properties().m_canvas_width;
-            const size_t            aov_count = frame.aov_images().size();
+            RENDERER_LOG_DEBUG(
+                "===================\nTile \n"
+                "%s\n"
+                "x: %s\n"
+                "y: %s\n"
+                "================\n",
+                pretty_uint(pass_hash).c_str(),
+                pretty_uint(tile_x).c_str(),
+                pretty_uint(tile_y).c_str());
+
+            const size_t frame_width = frame.image().properties().m_canvas_width;
+            const size_t aov_count = frame.aov_images().size();
 
             // Retrieve frame properties.
             const CanvasProperties& frame_properties = frame.image().properties();
@@ -523,8 +223,6 @@ namespace
             padded_tile_bbox.max.x = tile_bbox.max.x + m_margin_width;
             padded_tile_bbox.max.y = tile_bbox.max.y + m_margin_height;
 
-            rendering_blocks.emplace_back(padded_tile_bbox);
-
             // Inform the pixel renderer that we are about to render a tile.
             on_tile_begin(frame, tile, aov_tiles);
 
@@ -555,171 +253,150 @@ namespace
 
             const size_t pixel_count = framebuffer->get_width() * framebuffer->get_height();
 
-            // Pixel begin.
-            for (size_t i = 0, e = m_pixel_ordering.size(); i < e; ++i)
-            {
-                // Retrieve the coordinates of the pixel in the padded tile.
-                const Vector2i pt(m_pixel_ordering[i].x, m_pixel_ordering[i].y);
-
-                // Skip pixels outside the intersection of the padded tile and the crop window.
-                if (!padded_tile_bbox.contains(pt))
-                continue;
-
-                const Vector2i pi(tile_origin_x + pt.x, tile_origin_y + pt.y);
-
-                on_pixel_begin(pi, pt, tile_bbox, m_aov_accumulators);
-            }
-
             // Pixel rendering.
             size_t samples_so_far = 0;
+            size_t batch_number = 0;
 
-            bool all_converged = false;
+            vector<PixelBlock>  pixel_blocks;
+            vector<PixelBlock>  finished_blocks;
+            pixel_blocks.emplace_back(padded_tile_bbox);
 
-            while (!all_converged)
+            while (true)
             {
-                if (abort_switch.is_aborted())
-                    break;
-
                 const int remaining_samples = m_params.m_max_samples - samples_so_far;
 
-                if (remaining_samples < 1)
+                if (remaining_samples < 1 || abort_switch.is_aborted() || pixel_blocks.size() < 1)
+                {
+                    if (pixel_blocks.size() > 0)
+                        finished_blocks.insert(finished_blocks.end(), pixel_blocks.begin(), pixel_blocks.end());
+
                     break;
+                }
 
                 // Each batch contains 'min' samples.
                 const size_t batch_size = min(static_cast<int>(m_params.m_min_samples), remaining_samples);
+                batch_number++;
 
-                const size_t samples_now = samples_so_far;
-                const size_t samples_then = samples_now + batch_size;
+                RENDERER_LOG_DEBUG(
+                    "  batch number: %s\n"
+                    "  samples so far: %s\n"
+                    "  remaining samples: %d\n"
+                    "  batch size: %s\n"
+                    "  block amount: %s\n"
+                    "  converged block amount: %s\n",
+                    pretty_uint(batch_number).c_str(),
+                    pretty_uint(samples_so_far).c_str(),
+                    remaining_samples,
+                    pretty_uint(batch_size).c_str(),
+                    pretty_uint(pixel_blocks.size()).c_str(),
+                    pretty_uint(finished_blocks.size()).c_str());
 
-                all_converged = true;
+                vector<PixelBlock>  tmp_blocks;
 
                 // For each block.
-                auto rb_it = rendering_blocks.begin();
-                while (rb_it != rendering_blocks.end())
+                for (auto& pb : pixel_blocks)
                 {
-                    // Cancel any work done on this tile if rendering is aborted.
-                    if (abort_switch.is_aborted())
-                        break;
-
-                    RenderingBlock& rb = *rb_it;
-                    const AABB2i& rb_aabb = rb.get_bb();
-
-                    // Continue if block is already converged.
-                    if (rb.has_converged())
-                        continue;
-
-                    all_converged = false;
-
                     // Draw samples.
-                    const size_t invalid = rb.sample(
+                    sample_pixel_block(
+                        pb,
                         abort_switch,
                         batch_size,
-                        samples_now,
                         framebuffer,
                         second_framebuffer,
+                        tile_bbox,
                         tile_origin_x,
                         tile_origin_y,
                         frame,
                         frame_width,
                         pass_hash,
-                        m_params.m_sampling_mode,
-                        aov_count,
-                        m_aov_accumulators,
-                        m_sample_renderer,
-                        this);
+                        aov_count);
 
-                    //if (invalid > 0) signal_invalid_sample();
+                    if (abort_switch.is_aborted())
+                        break;
 
                     // Evaluate error metric.
-                    const float rb_error = rb.evaluate_error(framebuffer, second_framebuffer);
+                    const float pb_error = evaluate_pixel_block_error(
+                        pb,
+                        framebuffer,
+                        second_framebuffer);
 
                     // Take a decision.
-                    if (rb_error <= m_params.m_error_threshold)
+                    if (pb_error <= m_params.m_error_threshold)
                     {
-                        rb.mark_as_converged();
-                        for (int y = rb_aabb.min.y; y <= rb_aabb.max.y; ++y)
-                        {
-                            for (int x = rb_aabb.min.x; x <= rb_aabb.max.x; ++x)
-                            {
-                                // Retrieve the coordinates of the pixel in the padded tile.
-                                const Vector2i pt(x, y);
-                                const Vector2i pi(tile_origin_x + pt.x, tile_origin_y + pt.y);
-                                on_pixel_end(pi, pt, tile_bbox, m_aov_accumulators);
-                            }
-                        }
-                        rb_it++;
+                        pb.m_converged = true;
+                        finished_blocks.push_back(pb);
                     }
                     else if (remaining_samples - batch_size >= 1
-                            && rb_error <= m_params.m_error_threshold * SplittingFactor
-                            && rb.get_width() >= BlockSplittingThreshold
-                            && rb.get_height() >= BlockSplittingThreshold)
-                        rb_it = RenderingBlock::split_in_place(rendering_blocks, rb_it);
+                            && pb_error <= m_params.m_splitting_threshold
+                            && pb.m_width >= BlockSplittingThreshold
+                            && pb.m_height >= BlockSplittingThreshold)
+                        split_pixel_block(pb, pixel_blocks, tmp_blocks);
                     else
-                        rb_it++;
+                        tmp_blocks.push_back(pb);
                 }
 
-                samples_so_far = samples_then;
+                pixel_blocks = tmp_blocks;
+                samples_so_far += batch_size;
             }
 
             // Pixels end.
             // For each block.
-            size_t rb_index = 1;
-            for(auto rb_it = rendering_blocks.begin(); rb_it != rendering_blocks.end(); ++rb_it, ++rb_index)
+            size_t pb_index = 1;
+            for (auto& pb : finished_blocks)
             {
-                RenderingBlock& rb = *rb_it;
-                const AABB2i& rb_aabb = rb.get_bb();
-                const size_t rb_pixel_count = rb_aabb.volume();
+                const AABB2i& pb_aabb = pb.m_surface;
+                const size_t pb_pixel_count = pb_aabb.volume();
 
                 // Update statistics.
-                m_total_samples += rb.get_spp() * rb_pixel_count;
-                m_spp.insert(rb.get_spp());
-                m_total_saved_samples += (m_params.m_max_samples - rb.get_spp()) * rb_pixel_count;
-                m_saved_samples.insert(m_params.m_max_samples - rb.get_spp());
-                m_block_error.insert(rb.get_error());
+                m_total_samples += pb.m_spp * pb_pixel_count;
+                m_spp.insert(pb.m_spp);
+                m_total_saved_samples += (m_params.m_max_samples - pb.m_spp) * pb_pixel_count;
+                m_saved_samples.insert(m_params.m_max_samples - pb.m_spp);
+                m_block_error.insert(pb.m_block_error);
+                m_total_pixel += pb_pixel_count;
+                if (pb.m_converged)
+                    m_total_pixel_converged += pb_pixel_count;
 
-                for (int y = rb_aabb.min.y; y <= rb_aabb.max.y; ++y)
+                for (int y = pb_aabb.min.y; y <= pb_aabb.max.y; ++y)
                 {
-                    for (int x = rb_aabb.min.x; x <= rb_aabb.max.x; ++x)
+                    for (int x = pb_aabb.min.x; x <= pb_aabb.max.x; ++x)
                     {
                         // Retrieve the coordinates of the pixel in the padded tile.
                         const Vector2i pt(x, y);
+
+                        if (!padded_tile_bbox.contains(pt)) continue;
 
                         // Store diagnostics values in the diagnostics tile.
                         if (are_diagnostics_enabled() && tile_bbox.contains(pt))
                         {
                             Color<float, 5> values;
 
-                            values[0] = rb.get_error();
+                            values[0] = pb.m_block_error;
                             values[1] =
                                 m_params.m_min_samples == m_params.m_max_samples
                                 ? 1.0f
                                 : fit(
-                                        static_cast<float>(rb.get_spp()),
+                                        static_cast<float>(pb.m_spp),
                                         static_cast<float>(m_params.m_min_samples),
                                         static_cast<float>(m_params.m_max_samples),
                                         0.0f, 1.0f);
 
-                            Color3f rb_color = integer_to_color(pass_hash + rb_index);
-                            values[2] = rb_color[0];
-                            values[3] = rb_color[1];
-                            values[4] = rb_color[2];
+                            Color3f pb_color = integer_to_color(pass_hash * (tile_x + tile_y) + pb_index);
+                            values[2] = pb_color[0];
+                            values[3] = pb_color[1];
+                            values[4] = pb_color[2];
 
                             m_diagnostics->set_pixel(pt.x, pt.y, values);
                         }
-
-                        if (!rb.has_converged())
-                        {
-                            const Vector2i pi(tile_origin_x + pt.x, tile_origin_y + pt.y);
-                            on_pixel_end(pi, pt, tile_bbox, m_aov_accumulators);
-                        }
                     }
                 }
-                rb_index++;
+
+                pb_index++;
             }
 
             // Update statistics.
             m_max_samples += pixel_count * m_params.m_max_samples;
-            m_block_amount.insert(rendering_blocks.size());
+            m_block_amount.insert(finished_blocks.size());
 
             // Develop the framebuffer to the tile.
             framebuffer->develop_to_tile(tile, aov_tiles);
@@ -803,6 +480,8 @@ namespace
             stats.insert("max samples", m_max_samples);
             stats.insert("block error", m_block_error, 4);
             stats.insert("block amount/tile", m_block_amount);
+            stats.insert_percent("convergence rate", m_total_pixel_converged, m_total_pixel);
+            stats.insert_percent("samples saved", m_total_saved_samples, m_max_samples);
 
             StatisticsVector vec;
             vec.insert("adaptive tile renderer statistics", stats);
@@ -885,13 +564,15 @@ namespace
             const size_t                    m_min_samples;
             const size_t                    m_max_samples;
             const float                     m_error_threshold;
+            float                           m_splitting_threshold;
 
             explicit Parameters(const ParamArray& params)
               : m_sampling_mode(get_sampling_context_mode(params))
-              , m_min_samples(params.get_required<size_t>("min_samples", 16))
-              , m_max_samples(params.get_required<size_t>("max_samples", 256))
-              , m_error_threshold(params.get_optional<float>("precision", 2.0f))
+              , m_min_samples(params.get_required<size_t>("min_samples", 32))
+              , m_max_samples(params.get_required<size_t>("max_samples", 512))
+              , m_error_threshold(params.get_required<float>("precision", 0.01f))
             {
+                m_splitting_threshold = m_error_threshold * (m_min_samples * 0.5f + 1);
             }
         };
 
@@ -905,8 +586,243 @@ namespace
         Population<uint64>                      m_saved_samples;
         Population<size_t>                      m_block_amount;
         size_t                                  m_max_samples;
+        size_t                                  m_total_pixel_converged;
+        size_t                                  m_total_pixel;
         Population<float>                       m_block_error;
         unique_ptr<Tile>                        m_diagnostics;
+
+        struct PixelBlock
+        {
+            AABB2i                              m_surface;
+            size_t                              m_area;
+            size_t                              m_width;
+            size_t                              m_height;
+            size_t                              m_spp;
+            float                               m_block_error;
+            bool                                m_converged;
+
+            explicit PixelBlock(
+                const AABB2i&       surface)
+              : m_surface(surface)
+              , m_width(surface.max.x - surface.min.x + 1)
+              , m_height(surface.max.y - surface.min.y + 1)
+              , m_spp(0)
+              , m_block_error(0)
+              , m_converged(false)
+            {
+                m_area = m_width * m_height;
+            }
+        };
+
+        void sample_pixel_block(
+            PixelBlock&                         pb,
+            IAbortSwitch&                       abort_switch,
+            const size_t                        batch_size,
+            ShadingResultFrameBuffer*           framebuffer,
+            ShadingResultFrameBuffer*           second_framebuffer,
+            const AABB2i&                       tile_bbox,
+            const int                           tile_origin_x,
+            const int                           tile_origin_y,
+            const Frame&                        frame,
+            const size_t                        frame_width,
+            const size_t                        pass_hash,
+            const size_t                        aov_count)
+        {
+            // Loop over block pixels.
+            for (int y = pb.m_surface.min.y; y <= pb.m_surface.max.y; ++y)
+            {
+                for (int x = pb.m_surface.min.x; x <= pb.m_surface.max.x; ++x)
+                {
+                    // Cancel any work done on this tile if rendering is aborted.
+                    if (abort_switch.is_aborted())
+                        return;
+
+                    // Retrieve the coordinates of the pixel in the padded tile.
+                    const Vector2i pt(x, y);
+
+                    // Skip pixels outside the intersection of the padded tile and the crop window.
+                    if (!pb.m_surface.contains(pt))
+                        continue;
+
+                    const Vector2i pi(tile_origin_x + pt.x, tile_origin_y + pt.y);
+
+#ifdef DEBUG_BREAK_AT_PIXEL
+
+                    // Break in the debugger when this pixel is reached.
+                    if (pi == DEBUG_BREAK_AT_PIXEL)
+                        BREAKPOINT();
+
+#endif
+
+                    // Render this pixel.
+                    {
+                        on_pixel_begin(pi, pt, tile_bbox, m_aov_accumulators);
+
+                        const size_t pixel_index = pi.y * frame_width + pi.x;
+                        const size_t instance = hash_uint32(static_cast<uint32>(pass_hash + pixel_index * (pb.m_spp + 1)));
+
+                        SamplingContext::RNGType rng(pass_hash, instance);
+                        SamplingContext sampling_context(
+                            rng,
+                            m_params.m_sampling_mode,
+                            2,                          // number of dimensions
+                            0,                          // number of samples -- unknown
+                            instance);                  // initial instance number
+
+                        for (size_t j = 0; j < batch_size; ++j)
+                        {
+                            // Generate a uniform sample in [0,1)^2.
+                            const Vector2d s = sampling_context.next2<Vector2d>();
+
+                            // Compute the sample position in NDC.
+                            const Vector2d sample_position = frame.get_sample_position(pi.x + s.x, pi.y + s.y);
+
+                            // Create a pixel context that identifies the pixel and sample currently being rendered.
+                            const PixelContext pixel_context(pi, sample_position);
+
+                            // Render the sample.
+                            ShadingResult shading_result(aov_count);
+                            SamplingContext child_sampling_context(sampling_context);
+                            m_sample_renderer->render_sample(
+                                child_sampling_context,
+                                pixel_context,
+                                sample_position,
+                                m_aov_accumulators,
+                                shading_result);
+
+                            // Ignore invalid samples.
+                            if (!shading_result.is_valid())
+                            {
+                                signal_invalid_sample();
+                                continue;
+                            }
+
+                            // Merge the sample into the scratch framebuffer.
+                            framebuffer->add(
+                                static_cast<float>(pt.x + s.x),
+                                static_cast<float>(pt.y + s.y),
+                                shading_result);
+
+                            if (j < batch_size - 1)
+                            {
+                                second_framebuffer->add(
+                                        static_cast<float>(pt.x + s.x),
+                                        static_cast<float>(pt.y + s.y),
+                                        shading_result);
+                            }
+                        }
+                        on_pixel_end(pi, pt, tile_bbox, m_aov_accumulators);
+                    }
+                }
+            }
+
+            pb.m_spp += batch_size;
+        }
+
+        float evaluate_pixel_block_error(
+            PixelBlock&                         pb,
+            ShadingResultFrameBuffer*           framebuffer,
+            ShadingResultFrameBuffer*           second_framebuffer)
+        {
+            float error = 0;
+
+            AABB2i block_area = pb.m_surface;
+            block_area.min.x = max(0, block_area.min.x);
+            block_area.min.y = max(0, block_area.min.y);
+            block_area.max.x = min(framebuffer->get_crop_window().max.x, static_cast<size_t>(block_area.max.x));
+            block_area.max.y = min(framebuffer->get_crop_window().max.y, static_cast<size_t>(block_area.max.y));
+
+            const float pixel_count = block_area.volume();
+
+            // Compute scale factor as the block area over the image area.
+            float scale_factor = sqrt((framebuffer->get_width() * framebuffer->get_height()) / pixel_count);
+
+
+            // Loop over block pixels.
+            for (int x = pb.m_surface.min.x; x <= pb.m_surface.max.x; ++x)
+            {
+                for (int y = pb.m_surface.min.y; y <= pb.m_surface.max.y; ++y)
+                {
+                    if (x < 0 || x >= framebuffer->get_width() ||
+                        y < 0 || y >= framebuffer->get_height())
+                        continue;
+
+                    const float* main_ptr = framebuffer->pixel(x, y);
+                    const float* second_ptr = second_framebuffer->pixel(x, y);
+
+                    // Weight.
+                    const float main_weight = *main_ptr++;
+                    const float main_rcp_weight = main_weight == 0.0f ? 0.0f : 1.0f / main_weight;
+                    const float second_weight = *second_ptr++;
+                    const float second_rcp_weight = second_weight == 0.0f ? 0.0f : 1.0f / second_weight;
+
+                    // Get color.
+                    Color4f main_color(main_ptr[0], main_ptr[1], main_ptr[2], main_ptr[3]);
+                    main_color = main_color * main_rcp_weight;
+                    main_ptr += 4;
+
+                    Color4f second_color(second_ptr[0], second_ptr[1], second_ptr[2], second_ptr[3]);
+                    second_color = second_color * second_rcp_weight;
+                    second_ptr += 4;
+
+                    main_color.unpremultiply();
+                    main_color.rgb() = fast_linear_rgb_to_srgb(main_color.rgb());
+                    main_color = saturate(main_color);
+                    main_color.premultiply();
+
+                    second_color.unpremultiply();
+                    second_color.rgb() = fast_linear_rgb_to_srgb(second_color.rgb());
+                    second_color = saturate(second_color);
+                    second_color.premultiply();
+
+                    error += (
+                            abs(main_color.r - second_color.r)
+                            + abs(main_color.g - second_color.g)
+                            + abs(main_color.b - second_color.b)
+                            ) / fast_sqrt(main_color.r + main_color.g + main_color.b);
+                }
+            }
+
+            error *= (scale_factor / pixel_count);
+            pb.m_block_error = error;
+            return error;
+        }
+
+        void split_pixel_block(
+            PixelBlock&                         pb,
+            vector<PixelBlock>&                 source_blocks,
+            vector<PixelBlock>&                 output_blocks) const
+        {
+            assert(pb.m_width >= BlockSplittingThreshold);
+            assert(pb.m_height >= BlockSplittingThreshold);
+
+            AABB2i f_half = pb.m_surface, s_half = pb.m_surface;
+
+            if (pb.m_width >= pb.m_height)
+            {
+                // Split horizontaly.
+                size_t splitting_point = pb.m_surface.min.x + static_cast<int>(pb.m_width * 0.5f - 0.5f);
+                f_half.max.x = splitting_point;
+                s_half.min.x = splitting_point + 1;
+            }
+            else
+            {
+                // Split verticaly.
+                size_t splitting_point = pb.m_surface.min.y + static_cast<int>(pb.m_height * 0.5f - 0.5f);
+                f_half.max.y = splitting_point;
+                s_half.min.y = splitting_point + 1;
+            }
+
+            PixelBlock f_block(f_half), s_block(s_half);
+
+            assert(f_block.m_width >= BlockMinAllowedSize && f_block.m_height >= BlockMinAllowedSize);
+            assert(s_block.m_width >= BlockMinAllowedSize && s_block.m_height >= BlockMinAllowedSize);
+
+            f_block.m_spp = s_block.m_spp = pb.m_spp;
+
+            output_blocks.push_back(f_block);
+            output_blocks.push_back(s_block);
+        }
 
         static Color4f colorize_samples(const float value)
         {
@@ -918,6 +834,22 @@ namespace
         static Color4f colorize_variation(const float value)
         {
             return Color4f(0.0f, value, 0.0f, 1.0f);
+        }
+
+        // Compute a color from a given integer.
+        template <typename T>
+        static Color3f integer_to_color(const T i)
+        {
+            const uint32 u = static_cast<uint32>(i);    // keep the low 32 bits
+
+            const uint32 x = hash_uint32(u);
+            const uint32 y = hash_uint32(u + 1);
+            const uint32 z = hash_uint32(u + 2);
+
+            return Color3f(
+                static_cast<float>(x) * (1.0f / 4294967295.0f),
+                static_cast<float>(y) * (1.0f / 4294967295.0f),
+                static_cast<float>(z) * (1.0f / 4294967295.0f));
         }
     };
 }
