@@ -126,7 +126,6 @@ namespace
           , m_total_pixel(0)
         {
             compute_tile_margins(frame, thread_index == 0);
-            compute_pixel_ordering(frame);
 
             if (are_diagnostics_enabled())
             {
@@ -317,25 +316,39 @@ namespace
                         break;
                     }
 
+                    if (batch_number <= 3)
+                    {
+                        tmp_blocks.push_back(pb);
+                        continue;
+                    }
+
+                    // No point to continue if this is the end
+                    if (remaining_samples - batch_size < 1)
+                    {
+                        finished_blocks.push_back(pb);
+                        break;
+                    }
+
                     // Evaluate error metric.
-                    const float pb_error = evaluate_pixel_block_error(
+                    evaluate_pixel_block_error(
                         pb,
                         framebuffer,
                         second_framebuffer);
 
                     // Take a decision.
-                    if (pb_error <= m_params.m_error_threshold)
+                    if (pb.m_splitting_point == 0 && pb.m_block_error <= m_params.m_error_threshold)
                     {
                         pb.m_converged = true;
                         finished_blocks.push_back(pb);
                     }
-                    else if (remaining_samples - batch_size >= 1
-                            && pb_error <= m_params.m_splitting_threshold
-                            && pb.m_width >= BlockSplittingThreshold
-                            && pb.m_height >= BlockSplittingThreshold)
+                    else if (pb.m_splitting_point != 0)
+                    {
                         split_pixel_block(pb, pixel_blocks, tmp_blocks);
+                    }
                     else
+                    {
                         tmp_blocks.push_back(pb);
+                    }
                 }
 
                 pixel_blocks = tmp_blocks;
@@ -359,6 +372,24 @@ namespace
                 m_total_pixel += pb_pixel_count;
                 if (pb.m_converged)
                     m_total_pixel_converged += pb_pixel_count;
+
+                if (pb.m_block_error <= 0.0f || pb.m_spp <= 0)
+                {
+                    RENDERER_LOG_WARNING(
+                        "Block missing some information\n"
+                        "  min x:           %s\n"
+                        "  max x:           %s\n"
+                        "  min y:           %s\n"
+                        "  max x:           %s\n"
+                        "  error:           %f\n"
+                        "  samples/pixel:   %s",
+                        pretty_uint(pb.m_surface.min.x).c_str(),
+                        pretty_uint(pb.m_surface.max.x).c_str(),
+                        pretty_uint(pb.m_surface.min.y).c_str(),
+                        pretty_uint(pb.m_surface.max.y).c_str(),
+                        pb.m_block_error,
+                        pretty_uint(pb.m_spp).c_str());
+                }
 
                 for (int y = pb_aabb.min.y; y <= pb_aabb.max.y; ++y)
                 {
@@ -476,15 +507,15 @@ namespace
         StatisticsVector get_statistics() const override
         {
             Statistics stats;
+            stats.insert("max theorical samples", m_max_samples);
             stats.insert("total samples", m_total_samples);
             stats.insert("samples/pixel", m_spp);
             stats.insert("total samples saved", m_total_saved_samples);
-            stats.insert("samples saved/pixel", m_saved_samples);
-            stats.insert("max samples", m_max_samples);
+            stats.insert("saved samples/pixel", m_saved_samples);
+            stats.insert_percent("saved samples rate", m_total_saved_samples, m_max_samples);
             stats.insert("block error", m_block_error, 4);
-            stats.insert("block amount/tile", m_block_amount);
+            stats.insert("blocks/tile", m_block_amount);
             stats.insert_percent("convergence rate", m_total_pixel_converged, m_total_pixel);
-            stats.insert_percent("samples saved", m_total_saved_samples, m_max_samples);
 
             StatisticsVector vec;
             vec.insert("adaptive tile renderer statistics", stats);
@@ -504,7 +535,6 @@ namespace
         IShadingResultFrameBufferFactory*   m_framebuffer_factory;
         int                                 m_margin_width;
         int                                 m_margin_height;
-        vector<Vector<int16, 2>>            m_pixel_ordering;
 
         void compute_tile_margins(const Frame& frame, const bool primary)
         {
@@ -533,33 +563,6 @@ namespace
             }
         }
 
-        void compute_pixel_ordering(const Frame& frame)
-        {
-            // Compute the dimensions in pixels of the padded tile.
-            const CanvasProperties& properties = frame.image().properties();
-            const size_t padded_tile_width = properties.m_tile_width + 2 * m_margin_width;
-            const size_t padded_tile_height = properties.m_tile_height + 2 * m_margin_height;
-            const size_t pixel_count = padded_tile_width * padded_tile_height;
-
-            // Generate the pixel ordering inside the padded tile.
-            vector<size_t> ordering;
-            ordering.reserve(pixel_count);
-            hilbert_ordering(ordering, padded_tile_width, padded_tile_height);
-            assert(ordering.size() == pixel_count);
-
-            // Convert the pixel ordering to a 2D representation.
-            m_pixel_ordering.resize(pixel_count);
-            for (size_t i = 0; i < pixel_count; ++i)
-            {
-                const size_t x = ordering[i] % padded_tile_width;
-                const size_t y = ordering[i] / padded_tile_width;
-                assert(x < padded_tile_width);
-                assert(y < padded_tile_height);
-                m_pixel_ordering[i].x = static_cast<int16>(x) - m_margin_width;
-                m_pixel_ordering[i].y = static_cast<int16>(y) - m_margin_height;
-            }
-        }
-
       private:
         struct Parameters
         {
@@ -575,7 +578,7 @@ namespace
               , m_max_samples(params.get_required<size_t>("max_samples", 512))
               , m_error_threshold(params.get_required<float>("precision", 0.01f))
             {
-                m_splitting_threshold = m_error_threshold * (m_min_samples + 1);
+                m_splitting_threshold = m_error_threshold * 256;
             }
         };
 
@@ -603,12 +606,15 @@ namespace
             size_t                              m_spp;
             float                               m_block_error;
             bool                                m_converged;
+            size_t                              m_splitting_point;
 
             enum Axis
             {
                 HORIZONTAL_X,
                 VERTICAL_Y,
             };
+
+            Axis                                m_main_axis;
 
             explicit PixelBlock(
                 const AABB2i&       surface)
@@ -618,8 +624,15 @@ namespace
               , m_spp(0)
               , m_block_error(0)
               , m_converged(false)
+              , m_splitting_point(0)
             {
+                assert(m_surface.is_valid());
                 m_area = m_width * m_height;
+
+                if (m_width >= m_height)
+                    m_main_axis = Axis::HORIZONTAL_X; // block is wider
+                else
+                    m_main_axis = Axis::VERTICAL_Y; // block is taller
             }
         };
 
@@ -732,12 +745,15 @@ namespace
             pb.m_spp += batch_size;
         }
 
-        float evaluate_pixel_block_error(
+        void evaluate_pixel_block_error(
             PixelBlock&                         pb,
             ShadingResultFrameBuffer*           framebuffer,
             ShadingResultFrameBuffer*           second_framebuffer)
         {
-            float error = 0;
+            float error = pb.m_block_error = 0.0f;
+
+            // Determine a splitting point so that two blocks have roughly the same error.
+            size_t splitting_point = pb.m_splitting_point = 0;
 
             AABB2i block_area = pb.m_surface;
             const AABB2i img_area = framebuffer->get_crop_window();
@@ -746,61 +762,104 @@ namespace
             block_area.max.x = min(img_area.max.x, block_area.max.x);
             block_area.max.y = min(img_area.max.y, block_area.max.y);
 
-
             const float pixel_count = (block_area.max.x - block_area.min.x + 1) * (block_area.max.y - block_area.min.y + 1);
             const float img_pixel_count = (img_area.max.x - img_area.min.x + 1) * (img_area.max.y - img_area.min.y + 1);
 
             // Compute scale factor as the block area over the image area.
-            double scale_factor = sqrt(pixel_count / img_pixel_count) / pixel_count;
+            double scale_factor = fast_sqrt(pixel_count / img_pixel_count) / pixel_count;
 
-
-            // Loop over block pixels.
-            for (int x = block_area.min.x; x <= block_area.max.x; ++x)
+            if (pb.m_width >= BlockSplittingThreshold
+                && pb.m_height >= BlockSplittingThreshold)
             {
-                for (int y = block_area.min.y; y <= block_area.max.y; ++y)
+                if (pb.m_main_axis == PixelBlock::Axis::HORIZONTAL_X)
                 {
-                    assert(x >= 0 && x < framebuffer->get_width());
-                    assert(y >= 0 && y < framebuffer->get_height());
+                    // Loop over block pixels when splitting vertically.
+                    for (int x = block_area.min.x; x <= block_area.max.x; ++x)
+                    {
+                        for (int y = block_area.min.y; y <= block_area.max.y; ++y)
+                        {
+                            assert(x >= 0 && x < framebuffer->get_width());
+                            assert(y >= 0 && y < framebuffer->get_height());
 
-                    const float* main_ptr = framebuffer->pixel(x, y);
-                    const float* second_ptr = second_framebuffer->pixel(x, y);
+                            const float* main_ptr = framebuffer->pixel(x, y);
+                            const float* second_ptr = second_framebuffer->pixel(x, y);
 
-                    // Weight.
-                    const float main_weight = *main_ptr++;
-                    const float main_rcp_weight = main_weight == 0.0f ? 0.0f : 1.0f / main_weight;
-                    const float second_weight = *second_ptr++;
-                    const float second_rcp_weight = second_weight == 0.0f ? 0.0f : 1.0f / second_weight;
+                            error += compute_pixel_error(main_ptr, second_ptr);
+                        }
+                        if (error * scale_factor >= m_params.m_splitting_threshold
+                            && x >= BlockMinAllowedSize && (block_area.max.x - x) <= BlockMinAllowedSize)
+                        {
+                            splitting_point = x;
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    // Loop over block pixels when splitting horizontally.
+                    for (int y = block_area.min.y; y <= block_area.max.y; ++y)
+                    {
+                        for (int x = block_area.min.x; x <= block_area.max.x; ++x)
+                        {
+                            assert(x >= 0 && x < framebuffer->get_width());
+                            assert(y >= 0 && y < framebuffer->get_height());
 
-                    // Get color.
-                    Color4f main_color(main_ptr[0], main_ptr[1], main_ptr[2], main_ptr[3]);
-                    main_color = main_color * main_rcp_weight;
-                    main_ptr += 4;
+                            const float* main_ptr = framebuffer->pixel(x, y);
+                            const float* second_ptr = second_framebuffer->pixel(x, y);
 
-                    Color4f second_color(second_ptr[0], second_ptr[1], second_ptr[2], second_ptr[3]);
-                    second_color = second_color * second_rcp_weight;
-                    second_ptr += 4;
+                            error += compute_pixel_error(main_ptr, second_ptr);
+                        }
+                        if (error * scale_factor >= m_params.m_splitting_threshold
+                            && y >= BlockMinAllowedSize && (block_area.max.y - y) <= BlockMinAllowedSize)
+                        {
+                            splitting_point = y;
+                            break;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // Loop over block pixels when not splitting.
+                for (int x = block_area.min.x; x <= block_area.max.x; ++x)
+                {
+                    for (int y = block_area.min.y; y <= block_area.max.y; ++y)
+                    {
+                        assert(x >= 0 && x < framebuffer->get_width());
+                        assert(y >= 0 && y < framebuffer->get_height());
 
-                    main_color.unpremultiply();
-                    main_color.rgb() = fast_linear_rgb_to_srgb(main_color.rgb());
-                    main_color = saturate(main_color);
-                    main_color.premultiply();
+                        const float* main_ptr = framebuffer->pixel(x, y);
+                        const float* second_ptr = second_framebuffer->pixel(x, y);
 
-                    second_color.unpremultiply();
-                    second_color.rgb() = fast_linear_rgb_to_srgb(second_color.rgb());
-                    second_color = saturate(second_color);
-                    second_color.premultiply();
-
-                    error += (
-                            fabs(main_color.r - second_color.r)
-                            + fabs(main_color.g - second_color.g)
-                            + fabs(main_color.b - second_color.b)
-                            ) / fast_sqrt(main_color.r + main_color.g + main_color.b);
+                        error += compute_pixel_error(main_ptr, second_ptr);
+                    }
                 }
             }
 
-            error *= scale_factor;
-            pb.m_block_error = error;
-            return error;
+            if (splitting_point != 0)
+            {
+                pb.m_block_error = 0;
+                pb.m_splitting_point = splitting_point;
+            }
+            else
+            {
+                pb.m_block_error = error * scale_factor;
+
+                if (pb.m_block_error <= m_params.m_splitting_threshold
+                    && pb.m_block_error > m_params.m_error_threshold
+                    && pb.m_width >= BlockSplittingThreshold
+                    && pb.m_height >= BlockSplittingThreshold)
+                {
+                    if (pb.m_main_axis == PixelBlock::Axis::HORIZONTAL_X)
+                        pb.m_splitting_point = pb.m_surface.min.x + static_cast<int>(pb.m_width * 0.5f - 0.5f);
+                    else
+                        pb.m_splitting_point = pb.m_surface.min.y + static_cast<int>(pb.m_height * 0.5f - 0.5f);
+                }
+                else
+                {
+                    pb.m_splitting_point = 0;
+                }
+            }
         }
 
         void split_pixel_block(
@@ -813,19 +872,17 @@ namespace
 
             AABB2i f_half = pb.m_surface, s_half = pb.m_surface;
 
-            if (pb.m_width >= pb.m_height)
+            if (pb.m_main_axis == PixelBlock::Axis::HORIZONTAL_X)
             {
                 // Split horizontaly.
-                size_t splitting_point = pb.m_surface.min.x + static_cast<int>(pb.m_width * 0.5f - 0.5f);
-                f_half.max.x = splitting_point;
-                s_half.min.x = splitting_point + 1;
+                f_half.max.x = pb.m_splitting_point;
+                s_half.min.x = pb.m_splitting_point + 1;
             }
             else
             {
                 // Split verticaly.
-                size_t splitting_point = pb.m_surface.min.y + static_cast<int>(pb.m_height * 0.5f - 0.5f);
-                f_half.max.y = splitting_point;
-                s_half.min.y = splitting_point + 1;
+                f_half.max.y = pb.m_splitting_point;
+                s_half.min.y = pb.m_splitting_point + 1;
             }
 
             PixelBlock f_block(f_half), s_block(s_half);
@@ -837,6 +894,40 @@ namespace
 
             output_blocks.push_back(f_block);
             output_blocks.push_back(s_block);
+        }
+
+        static float compute_pixel_error(const float* main_pixel, const float* accumulated_pixel)
+        {
+            // Weight.
+            const float main_weight = *main_pixel++;
+            const float main_rcp_weight = main_weight == 0.0f ? 0.0f : 1.0f / main_weight;
+            const float second_weight = *accumulated_pixel++;
+            const float second_rcp_weight = second_weight == 0.0f ? 0.0f : 1.0f / second_weight;
+
+            // Get color.
+            Color4f main_color(main_pixel[0], main_pixel[1], main_pixel[2], main_pixel[3]);
+            main_color = main_color * main_rcp_weight;
+            main_pixel += 4;
+
+            Color4f second_color(accumulated_pixel[0], accumulated_pixel[1], accumulated_pixel[2], accumulated_pixel[3]);
+            second_color = second_color * second_rcp_weight;
+            accumulated_pixel += 4;
+
+            main_color.unpremultiply();
+            main_color.rgb() = fast_linear_rgb_to_srgb(main_color.rgb());
+            main_color = saturate(main_color);
+            main_color.premultiply();
+
+            second_color.unpremultiply();
+            second_color.rgb() = fast_linear_rgb_to_srgb(second_color.rgb());
+            second_color = saturate(second_color);
+            second_color.premultiply();
+
+            return (
+                abs(main_color.r - second_color.r)
+                + abs(main_color.g - second_color.g)
+                + abs(main_color.b - second_color.b)
+                ) / fast_sqrt(main_color.r + main_color.g + main_color.b);
         }
 
         static Color4f colorize_samples(const float value)

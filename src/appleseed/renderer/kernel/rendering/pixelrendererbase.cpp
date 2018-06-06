@@ -115,6 +115,7 @@ void PixelRendererBase::on_tile_end(
 
                 switch (sample_state[0])
                 {
+                  default:
                   case NoState:
                     color = Color4f(1.0f, 0.0f, 0.0f, 1.0f);
                     break;
@@ -128,8 +129,6 @@ void PixelRendererBase::on_tile_end(
                     color.rgb().set(0.2f * luminance(color.rgb()));     // 20% of luminance
                     color.a = 1.0f;
                     break;
-
-                  assert_otherwise;
                 }
 
                 aov_tiles.set_pixel(x, y, m_invalid_sample_aov_index, color);
