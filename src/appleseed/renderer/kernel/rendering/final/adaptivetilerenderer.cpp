@@ -312,7 +312,10 @@ namespace
                         aov_count);
 
                     if (abort_switch.is_aborted())
+                    {
+                        finished_blocks.push_back(pb);
                         break;
+                    }
 
                     // Evaluate error metric.
                     const float pb_error = evaluate_pixel_block_error(
@@ -345,7 +348,7 @@ namespace
             for (auto& pb : finished_blocks)
             {
                 const AABB2i& pb_aabb = pb.m_surface;
-                const size_t pb_pixel_count = pb_aabb.volume();
+                const float pb_pixel_count = (pb_aabb.max.x - pb_aabb.min.x + 1) * (pb_aabb.max.y - pb_aabb.min.y + 1);
 
                 // Update statistics.
                 m_total_samples += pb.m_spp * pb_pixel_count;
@@ -572,7 +575,7 @@ namespace
               , m_max_samples(params.get_required<size_t>("max_samples", 512))
               , m_error_threshold(params.get_required<float>("precision", 0.01f))
             {
-                m_splitting_threshold = m_error_threshold * (m_min_samples * 0.5f + 1);
+                m_splitting_threshold = m_error_threshold * (m_min_samples + 1);
             }
         };
 
@@ -600,6 +603,12 @@ namespace
             size_t                              m_spp;
             float                               m_block_error;
             bool                                m_converged;
+
+            enum Axis
+            {
+                HORIZONTAL_X,
+                VERTICAL_Y,
+            };
 
             explicit PixelBlock(
                 const AABB2i&       surface)
@@ -731,25 +740,27 @@ namespace
             float error = 0;
 
             AABB2i block_area = pb.m_surface;
+            const AABB2i img_area = framebuffer->get_crop_window();
             block_area.min.x = max(0, block_area.min.x);
             block_area.min.y = max(0, block_area.min.y);
-            block_area.max.x = min(framebuffer->get_crop_window().max.x, static_cast<size_t>(block_area.max.x));
-            block_area.max.y = min(framebuffer->get_crop_window().max.y, static_cast<size_t>(block_area.max.y));
+            block_area.max.x = min(img_area.max.x, block_area.max.x);
+            block_area.max.y = min(img_area.max.y, block_area.max.y);
 
-            const float pixel_count = block_area.volume();
+
+            const float pixel_count = (block_area.max.x - block_area.min.x + 1) * (block_area.max.y - block_area.min.y + 1);
+            const float img_pixel_count = (img_area.max.x - img_area.min.x + 1) * (img_area.max.y - img_area.min.y + 1);
 
             // Compute scale factor as the block area over the image area.
-            float scale_factor = sqrt((framebuffer->get_width() * framebuffer->get_height()) / pixel_count);
+            double scale_factor = sqrt(pixel_count / img_pixel_count) / pixel_count;
 
 
             // Loop over block pixels.
-            for (int x = pb.m_surface.min.x; x <= pb.m_surface.max.x; ++x)
+            for (int x = block_area.min.x; x <= block_area.max.x; ++x)
             {
-                for (int y = pb.m_surface.min.y; y <= pb.m_surface.max.y; ++y)
+                for (int y = block_area.min.y; y <= block_area.max.y; ++y)
                 {
-                    if (x < 0 || x >= framebuffer->get_width() ||
-                        y < 0 || y >= framebuffer->get_height())
-                        continue;
+                    assert(x >= 0 && x < framebuffer->get_width());
+                    assert(y >= 0 && y < framebuffer->get_height());
 
                     const float* main_ptr = framebuffer->pixel(x, y);
                     const float* second_ptr = second_framebuffer->pixel(x, y);
@@ -780,14 +791,14 @@ namespace
                     second_color.premultiply();
 
                     error += (
-                            abs(main_color.r - second_color.r)
-                            + abs(main_color.g - second_color.g)
-                            + abs(main_color.b - second_color.b)
+                            fabs(main_color.r - second_color.r)
+                            + fabs(main_color.g - second_color.g)
+                            + fabs(main_color.b - second_color.b)
                             ) / fast_sqrt(main_color.r + main_color.g + main_color.b);
                 }
             }
 
-            error *= (scale_factor / pixel_count);
+            error *= scale_factor;
             pb.m_block_error = error;
             return error;
         }
