@@ -322,9 +322,8 @@ namespace
                         second_framebuffer);
 
                     // Take a decision.
-                    if (pb.m_splitting_point == 0 && pb.m_block_error <= m_params.m_error_threshold)
+                    if (pb.m_converged)
                     {
-                        pb.m_converged = true;
                         finished_blocks.push_back(pb);
                     }
                     else if (pb.m_splitting_point != 0)
@@ -754,6 +753,7 @@ namespace
 
             // Compute scale factor as the block area over the image area.
             double scale_factor = fast_sqrt(pixel_count / img_pixel_count) / pixel_count;
+            const double splitting_threshold = (m_params.m_splitting_threshold - m_params.m_error_threshold) * 0.5;
 
             if (pb.m_width >= BlockSplittingThreshold
                 && pb.m_height >= BlockSplittingThreshold)
@@ -773,11 +773,11 @@ namespace
 
                             error += compute_pixel_error(main_ptr, second_ptr);
                         }
-                        if (error * scale_factor >= m_params.m_splitting_threshold
+                        if (splitting_point == 0
+                            && error * scale_factor >= splitting_threshold
                             && x >= BlockMinAllowedSize && (block_area.max.x - x) <= BlockMinAllowedSize)
                         {
                             splitting_point = x;
-                            break;
                         }
                     }
                 }
@@ -796,11 +796,11 @@ namespace
 
                             error += compute_pixel_error(main_ptr, second_ptr);
                         }
-                        if (error * scale_factor >= m_params.m_splitting_threshold
+                        if (splitting_point == 0
+                            && error * scale_factor >= splitting_threshold
                             && y >= BlockMinAllowedSize && (block_area.max.y - y) <= BlockMinAllowedSize)
                         {
                             splitting_point = y;
-                            break;
                         }
                     }
                 }
@@ -823,18 +823,17 @@ namespace
                 }
             }
 
-            if (splitting_point != 0)
-            {
-                pb.m_block_error = 0;
-                pb.m_splitting_point = splitting_point;
-            }
-            else
-            {
-                pb.m_block_error = error * scale_factor;
+            pb.m_block_error = error * scale_factor;
 
-                if (pb.m_block_error <= m_params.m_splitting_threshold
-                    && pb.m_block_error > m_params.m_error_threshold
-                    && pb.m_width >= BlockSplittingThreshold
+            if (pb.m_block_error <= m_params.m_error_threshold)
+                pb.m_converged = true;
+            else if (pb.m_block_error <= m_params.m_splitting_threshold)
+            {
+                if (splitting_point != 0)
+                {
+                    pb.m_splitting_point = splitting_point;
+                }
+                else if ( pb.m_width >= BlockSplittingThreshold
                     && pb.m_height >= BlockSplittingThreshold)
                 {
                     if (pb.m_main_axis == PixelBlock::Axis::HORIZONTAL_X)
@@ -846,6 +845,10 @@ namespace
                 {
                     pb.m_splitting_point = 0;
                 }
+            }
+            else
+            {
+                pb.m_splitting_point = 0;
             }
         }
 
@@ -872,8 +875,8 @@ namespace
                 s_half.min.y = pb.m_splitting_point + 1;
             }
 
-            assert(f_half.is_valid);
-            assert(s_half.is_valid);
+            assert(f_half.is_valid());
+            assert(s_half.is_valid());
 
             PixelBlock f_block(f_half), s_block(s_half);
 
