@@ -175,16 +175,6 @@ namespace
             const size_t    pass_hash,
             IAbortSwitch&   abort_switch) override
         {
-            RENDERER_LOG_DEBUG(
-                "===================\nTile \n"
-                "%s\n"
-                "x: %s\n"
-                "y: %s\n"
-                "================\n",
-                pretty_uint(pass_hash).c_str(),
-                pretty_uint(tile_x).c_str(),
-                pretty_uint(tile_y).c_str());
-
             const size_t frame_width = frame.image().properties().m_canvas_width;
             const size_t aov_count = frame.aov_images().size();
 
@@ -198,6 +188,7 @@ namespace
             TileStack aov_tiles = frame.aov_images().tiles(tile_x, tile_y);
             const int tile_origin_x = static_cast<int>(frame_properties.m_tile_width * tile_x);
             const int tile_origin_y = static_cast<int>(frame_properties.m_tile_height * tile_y);
+            const size_t tile_index = tile_x + tile_y * (frame_width / static_cast<float>(frame_properties.m_tile_width));
 
             // Compute the image space bounding box of the pixels to render.
             AABB2i tile_bbox;
@@ -276,13 +267,8 @@ namespace
                 const size_t batch_size = min(static_cast<int>(m_params.m_min_samples), remaining_samples);
                 batch_number++;
 
-                RENDERER_LOG_DEBUG(
-                    "  batch number: %s\n"
-                    "  samples so far: %s\n"
-                    "  remaining samples: %d\n"
-                    "  batch size: %s\n"
-                    "  block amount: %s\n"
-                    "  converged block amount: %s\n",
+                RENDERER_LOG_DEBUG("T=%s; BN=%s; SSF=%s; RS=%i; BS=%s; RBA=%s; CBA=%s",
+                    pretty_uint(tile_index).c_str(),
                     pretty_uint(batch_number).c_str(),
                     pretty_uint(samples_so_far).c_str(),
                     remaining_samples,
@@ -313,7 +299,7 @@ namespace
                     if (abort_switch.is_aborted())
                     {
                         finished_blocks.push_back(pb);
-                        break;
+                        continue;
                     }
 
                     if (batch_number <= 3)
@@ -326,7 +312,7 @@ namespace
                     if (remaining_samples - batch_size < 1)
                     {
                         finished_blocks.push_back(pb);
-                        break;
+                        continue;
                     }
 
                     // Evaluate error metric.
@@ -373,16 +359,17 @@ namespace
                 if (pb.m_converged)
                     m_total_pixel_converged += pb_pixel_count;
 
-                if (pb.m_block_error <= 0.0f || pb.m_spp <= 0)
+                if (!(pb.m_spp > 0))
                 {
                     RENDERER_LOG_WARNING(
-                        "Block missing some information\n"
+                        "Block missing some information on tile %s\n"
                         "  min x:           %s\n"
                         "  max x:           %s\n"
                         "  min y:           %s\n"
                         "  max x:           %s\n"
                         "  error:           %f\n"
                         "  samples/pixel:   %s",
+                        pretty_uint(tile_index).c_str(),
                         pretty_uint(pb.m_surface.min.x).c_str(),
                         pretty_uint(pb.m_surface.max.x).c_str(),
                         pretty_uint(pb.m_surface.min.y).c_str(),
@@ -415,7 +402,7 @@ namespace
                                         static_cast<float>(m_params.m_max_samples),
                                         0.0f, 1.0f);
 
-                            Color3f pb_color = integer_to_color(pass_hash * (tile_x + tile_y) + pb_index);
+                            Color3f pb_color = integer_to_color(pass_hash * tile_index + pb_index);
                             values[2] = pb_color[0];
                             values[3] = pb_color[1];
                             values[4] = pb_color[2];
@@ -884,6 +871,9 @@ namespace
                 f_half.max.y = pb.m_splitting_point;
                 s_half.min.y = pb.m_splitting_point + 1;
             }
+
+            assert(f_half.is_valid);
+            assert(s_half.is_valid);
 
             PixelBlock f_block(f_half), s_block(s_half);
 
