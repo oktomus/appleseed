@@ -59,6 +59,7 @@
 #include "foundation/utility/iostreamop.h"
 #include "foundation/utility/job.h"
 #include "foundation/utility/statistics.h"
+#include "foundation/utility/stopwatch.h"
 #include "foundation/utility/string.h"
 
 // Standard headers.
@@ -133,6 +134,7 @@ namespace
             TileStack aov_tiles = frame.aov_images().tiles(tile_x, tile_y);
             const int tile_origin_x = static_cast<int>(frame_properties.m_tile_width * tile_x);
             const int tile_origin_y = static_cast<int>(frame_properties.m_tile_height * tile_y);
+            const size_t tile_index = tile_x + tile_y * (frame_properties.m_canvas_width / static_cast<float>(frame_properties.m_tile_width));
 
             // Compute the image space bounding box of the pixels to render.
             AABB2i tile_bbox;
@@ -176,6 +178,9 @@ namespace
                     tile_bbox);
             assert(framebuffer);
 
+            Stopwatch<DefaultWallclockTimer> stopwatch;
+            stopwatch.start();
+
             // Loop over tile pixels.
             for (size_t i = 0, e = m_pixel_ordering.size(); i < e; ++i)
             {
@@ -212,6 +217,11 @@ namespace
                     m_aov_accumulators,
                     *framebuffer);
             }
+
+            stopwatch.measure();
+            RENDERER_LOG_DEBUG("Tile %s, Total time [%s]",
+                pretty_uint(tile_index).c_str(),
+                pretty_time(stopwatch.get_seconds()).c_str());
 
             // Develop the framebuffer to the tile.
             framebuffer->develop_to_tile(tile, aov_tiles);

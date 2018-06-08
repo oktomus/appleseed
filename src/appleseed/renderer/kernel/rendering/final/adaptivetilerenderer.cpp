@@ -64,6 +64,7 @@
 #include "foundation/utility/iostreamop.h"
 #include "foundation/utility/job.h"
 #include "foundation/utility/statistics.h"
+#include "foundation/utility/stopwatch.h"
 #include "foundation/utility/string.h"
 
 // Standard headers.
@@ -251,6 +252,11 @@ namespace
             vector<PixelBlock>  finished_blocks;
             pixel_blocks.emplace_back(padded_tile_bbox);
 
+            double sampling_time = 0.0, variance_time = 0.0;
+
+            Stopwatch<DefaultWallclockTimer> total_watch;
+            total_watch.start();
+
             while (true)
             {
                 const int remaining_samples = m_params.m_max_samples - samples_so_far;
@@ -267,14 +273,14 @@ namespace
                 const size_t batch_size = min(static_cast<int>(m_params.m_min_samples), remaining_samples);
                 batch_number++;
 
-                RENDERER_LOG_DEBUG("T=%s; BN=%s; SSF=%s; RS=%i; BS=%s; RBA=%s; CBA=%s",
-                    pretty_uint(tile_index).c_str(),
-                    pretty_uint(batch_number).c_str(),
-                    pretty_uint(samples_so_far).c_str(),
-                    remaining_samples,
-                    pretty_uint(batch_size).c_str(),
-                    pretty_uint(pixel_blocks.size()).c_str(),
-                    pretty_uint(finished_blocks.size()).c_str());
+                // RENDERER_LOG_DEBUG("T=%s; BN=%s; SSF=%s; RS=%i; BS=%s; RBA=%s; CBA=%s",
+                //     pretty_uint(tile_index).c_str(),
+                //     pretty_uint(batch_number).c_str(),
+                //     pretty_uint(samples_so_far).c_str(),
+                //     remaining_samples,
+                //     pretty_uint(batch_size).c_str(),
+                //     pretty_uint(pixel_blocks.size()).c_str(),
+                //     pretty_uint(finished_blocks.size()).c_str());
 
                 vector<PixelBlock>  tmp_blocks;
 
@@ -282,6 +288,9 @@ namespace
                 for (auto& pb : pixel_blocks)
                 {
                     // Draw samples.
+                    Stopwatch<DefaultWallclockTimer> stopwatch;
+                    stopwatch.start();
+
                     sample_pixel_block(
                         pb,
                         abort_switch,
@@ -296,13 +305,16 @@ namespace
                         pass_hash,
                         aov_count);
 
+                    stopwatch.measure();
+                    sampling_time += stopwatch.get_seconds();
+
                     if (abort_switch.is_aborted())
                     {
                         finished_blocks.push_back(pb);
                         continue;
                     }
 
-                    if (batch_number <= 3)
+                    if (batch_number <= 2)
                     {
                         tmp_blocks.push_back(pb);
                         continue;
@@ -315,11 +327,16 @@ namespace
                         continue;
                     }
 
+                    stopwatch.start();
+
                     // Evaluate error metric.
                     evaluate_pixel_block_error(
                         pb,
                         framebuffer,
                         second_framebuffer);
+
+                    stopwatch.measure();
+                    variance_time += stopwatch.get_seconds();
 
                     // Take a decision.
                     if (pb.m_converged)
@@ -340,6 +357,9 @@ namespace
                 samples_so_far += batch_size;
             }
 
+
+            Stopwatch<DefaultWallclockTimer> end_watch;
+            end_watch.start();
             // Pixels end.
             // For each block.
             size_t pb_index = 1;
@@ -413,6 +433,16 @@ namespace
 
                 pb_index++;
             }
+
+            total_watch.measure();
+            end_watch.measure();
+
+            RENDERER_LOG_DEBUG("Tile %s, Total time [%s], Time for sampling [%s], Time for error [%s], Time for pixel end [%s]",
+                pretty_uint(tile_index).c_str(),
+                pretty_time(total_watch.get_seconds()).c_str(),
+                pretty_time(sampling_time).c_str(),
+                pretty_time(variance_time).c_str(),
+                pretty_time(end_watch.get_seconds()).c_str());
 
             // Update statistics.
             m_max_samples += pixel_count * m_params.m_max_samples;
@@ -898,13 +928,13 @@ namespace
             const float second_rcp_weight = second_weight == 0.0f ? 0.0f : 1.0f / second_weight;
 
             // Get color.
-            Color4f main_color(main_pixel[0], main_pixel[1], main_pixel[2], main_pixel[3]);
-            main_color = main_color * main_rcp_weight;
-            main_pixel += 4;
+            Color4f main_color(abs(main_pixel[0]), abs(main_pixel[1]), abs(main_pixel[2]), abs(main_pixel[3]));
+            main_color *= main_rcp_weight;
+            //main_pixel += 4;
 
-            Color4f second_color(accumulated_pixel[0], accumulated_pixel[1], accumulated_pixel[2], accumulated_pixel[3]);
-            second_color = second_color * second_rcp_weight;
-            accumulated_pixel += 4;
+            Color4f second_color(abs(accumulated_pixel[0]), abs(accumulated_pixel[1]), abs(accumulated_pixel[2]), abs(accumulated_pixel[3]));
+            second_color *= second_rcp_weight;
+            //accumulated_pixel += 4;
 
             main_color.unpremultiply();
             main_color.rgb() = fast_linear_rgb_to_srgb(main_color.rgb());
