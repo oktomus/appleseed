@@ -70,6 +70,7 @@
 // Standard headers.
 #include <cassert>
 #include <cmath>
+#include <deque>
 #include <memory>
 #include <string>
 #include <vector>
@@ -245,12 +246,9 @@ namespace
             const size_t pixel_count = framebuffer->get_width() * framebuffer->get_height();
 
             // Pixel rendering.
-            size_t samples_so_far = 0;
-            size_t batch_number = 0;
-
-            vector<PixelBlock>  pixel_blocks;
-            vector<PixelBlock>  finished_blocks;
-            pixel_blocks.emplace_back(padded_tile_bbox);
+            deque<PixelBlock> pixel_blocks;
+            vector<PixelBlock> finished_blocks;
+            pixel_blocks.emplace_front(padded_tile_bbox);
 
             double sampling_time = 0.0, variance_time = 0.0;
 
@@ -259,74 +257,48 @@ namespace
 
             while (true)
             {
-                const int remaining_samples = m_params.m_max_samples - samples_so_far;
-
-                if (remaining_samples < 1 || abort_switch.is_aborted() || pixel_blocks.size() < 1)
+                if (abort_switch.is_aborted() || pixel_blocks.size() < 1)
                 {
-                    if (pixel_blocks.size() > 0)
-                        finished_blocks.insert(finished_blocks.end(), pixel_blocks.begin(), pixel_blocks.end());
-
+                    finished_blocks.insert(finished_blocks.end(), pixel_blocks.begin(), pixel_blocks.end());
                     break;
                 }
 
+                PixelBlock& pb = pixel_blocks.front();
+                pixel_blocks.pop_front();
+
+                const int remaining_samples = m_params.m_max_samples - pb.m_spp;
+
                 // Each batch contains 'min' samples.
                 const size_t batch_size = min(static_cast<int>(m_params.m_min_samples), remaining_samples);
-                batch_number++;
 
-                // RENDERER_LOG_DEBUG("T=%s; BN=%s; SSF=%s; RS=%i; BS=%s; RBA=%s; CBA=%s",
-                //     pretty_uint(tile_index).c_str(),
-                //     pretty_uint(batch_number).c_str(),
-                //     pretty_uint(samples_so_far).c_str(),
-                //     remaining_samples,
-                //     pretty_uint(batch_size).c_str(),
-                //     pretty_uint(pixel_blocks.size()).c_str(),
-                //     pretty_uint(finished_blocks.size()).c_str());
+                // Draw samples.
+                Stopwatch<DefaultWallclockTimer> stopwatch;
+                stopwatch.start();
 
-                vector<PixelBlock>  tmp_blocks;
+                sample_pixel_block(
+                    pb,
+                    abort_switch,
+                    batch_size,
+                    framebuffer,
+                    second_framebuffer,
+                    tile_bbox,
+                    tile_origin_x,
+                    tile_origin_y,
+                    frame,
+                    frame_width,
+                    pass_hash,
+                    aov_count);
 
-                // For each block.
-                for (auto& pb : pixel_blocks)
+                stopwatch.measure();
+                sampling_time += stopwatch.get_seconds();
+
+                // No point to continue if this is the end.
+                if (remaining_samples - batch_size < 1)
                 {
-                    // Draw samples.
-                    Stopwatch<DefaultWallclockTimer> stopwatch;
-                    stopwatch.start();
-
-                    sample_pixel_block(
-                        pb,
-                        abort_switch,
-                        batch_size,
-                        framebuffer,
-                        second_framebuffer,
-                        tile_bbox,
-                        tile_origin_x,
-                        tile_origin_y,
-                        frame,
-                        frame_width,
-                        pass_hash,
-                        aov_count);
-
-                    stopwatch.measure();
-                    sampling_time += stopwatch.get_seconds();
-
-                    if (abort_switch.is_aborted())
-                    {
-                        finished_blocks.push_back(pb);
-                        continue;
-                    }
-
-                    if (batch_number <= 2)
-                    {
-                        tmp_blocks.push_back(pb);
-                        continue;
-                    }
-
-                    // No point to continue if this is the end
-                    if (remaining_samples - batch_size < 1)
-                    {
-                        finished_blocks.push_back(pb);
-                        continue;
-                    }
-
+                    finished_blocks.push_back(pb);
+                }
+                else
+                {
                     stopwatch.start();
 
                     // Evaluate error metric.
@@ -345,16 +317,14 @@ namespace
                     }
                     else if (pb.m_splitting_point != 0)
                     {
-                        split_pixel_block(pb, pixel_blocks, tmp_blocks);
+                        split_pixel_block(pb, pixel_blocks);
                     }
                     else
                     {
-                        tmp_blocks.push_back(pb);
+                        // Block's variance is too high and it needs to be sampled.
+                        pixel_blocks.push_front(pb);
                     }
                 }
-
-                pixel_blocks = tmp_blocks;
-                samples_so_far += batch_size;
             }
 
 
@@ -766,10 +736,7 @@ namespace
             ShadingResultFrameBuffer*           framebuffer,
             ShadingResultFrameBuffer*           second_framebuffer)
         {
-            float error = pb.m_block_error = 0.0f;
-
-            // Determine a splitting point so that two blocks have roughly the same error.
-            size_t splitting_point = pb.m_splitting_point = 0;
+            float error = 0.0f;
 
             AABB2i block_area = pb.m_surface;
             const AABB2i img_area = framebuffer->get_crop_window();
@@ -783,93 +750,39 @@ namespace
 
             // Compute scale factor as the block area over the image area.
             double scale_factor = fast_sqrt(pixel_count / img_pixel_count) / pixel_count;
-            const double splitting_threshold = (m_params.m_splitting_threshold - m_params.m_error_threshold) * 0.5;
 
-            if (pb.m_width >= BlockSplittingThreshold
-                && pb.m_height >= BlockSplittingThreshold)
+            // Loop over block pixels.
+            for (int y = block_area.min.y; y <= block_area.max.y; ++y)
             {
-                if (pb.m_main_axis == PixelBlock::Axis::HORIZONTAL_X)
-                {
-                    // Loop over block pixels when splitting vertically.
-                    for (int x = block_area.min.x; x <= block_area.max.x; ++x)
-                    {
-                        for (int y = block_area.min.y; y <= block_area.max.y; ++y)
-                        {
-                            assert(x >= 0 && x < framebuffer->get_width());
-                            assert(y >= 0 && y < framebuffer->get_height());
-
-                            const float* main_ptr = framebuffer->pixel(x, y);
-                            const float* second_ptr = second_framebuffer->pixel(x, y);
-
-                            error += compute_pixel_error(main_ptr, second_ptr);
-                        }
-                        if (splitting_point == 0
-                            && error * scale_factor >= splitting_threshold
-                            && x >= BlockMinAllowedSize && (block_area.max.x - x) <= BlockMinAllowedSize)
-                        {
-                            splitting_point = x;
-                        }
-                    }
-                }
-                else
-                {
-                    // Loop over block pixels when splitting horizontally.
-                    for (int y = block_area.min.y; y <= block_area.max.y; ++y)
-                    {
-                        for (int x = block_area.min.x; x <= block_area.max.x; ++x)
-                        {
-                            assert(x >= 0 && x < framebuffer->get_width());
-                            assert(y >= 0 && y < framebuffer->get_height());
-
-                            const float* main_ptr = framebuffer->pixel(x, y);
-                            const float* second_ptr = second_framebuffer->pixel(x, y);
-
-                            error += compute_pixel_error(main_ptr, second_ptr);
-                        }
-                        if (splitting_point == 0
-                            && error * scale_factor >= splitting_threshold
-                            && y >= BlockMinAllowedSize && (block_area.max.y - y) <= BlockMinAllowedSize)
-                        {
-                            splitting_point = y;
-                        }
-                    }
-                }
-            }
-            else
-            {
-                // Loop over block pixels when not splitting.
+                assert(y >= 0 && y < framebuffer->get_height());
                 for (int x = block_area.min.x; x <= block_area.max.x; ++x)
                 {
-                    for (int y = block_area.min.y; y <= block_area.max.y; ++y)
-                    {
-                        assert(x >= 0 && x < framebuffer->get_width());
-                        assert(y >= 0 && y < framebuffer->get_height());
+                    assert(x >= 0 && x < framebuffer->get_width());
 
-                        const float* main_ptr = framebuffer->pixel(x, y);
-                        const float* second_ptr = second_framebuffer->pixel(x, y);
+                    const float* main_ptr = framebuffer->pixel(x, y);
+                    const float* second_ptr = second_framebuffer->pixel(x, y);
 
-                        error += compute_pixel_error(main_ptr, second_ptr);
-                    }
+                    error += compute_pixel_error(main_ptr, second_ptr);
                 }
             }
 
             pb.m_block_error = error * scale_factor;
 
             if (pb.m_block_error <= m_params.m_error_threshold)
+            {
                 pb.m_converged = true;
+            }
             else if (pb.m_block_error <= m_params.m_splitting_threshold)
             {
-                if (splitting_point != 0)
+                if (pb.m_main_axis == PixelBlock::Axis::HORIZONTAL_X
+                    && pb.m_width >= BlockSplittingThreshold)
                 {
-                    pb.m_splitting_point = splitting_point;
+                    pb.m_splitting_point = pb.m_surface.min.x + static_cast<int>(pb.m_width * 0.5f - 0.5f);
                 }
-                else if ( pb.m_width >= BlockSplittingThreshold
+                else if (pb.m_main_axis == PixelBlock::Axis::VERTICAL_Y
                     && pb.m_height >= BlockSplittingThreshold)
                 {
-                    if (pb.m_main_axis == PixelBlock::Axis::HORIZONTAL_X)
-                        pb.m_splitting_point = pb.m_surface.min.x + static_cast<int>(pb.m_width * 0.5f - 0.5f);
-                    else
-                        pb.m_splitting_point = pb.m_surface.min.y + static_cast<int>(pb.m_height * 0.5f - 0.5f);
+                    pb.m_splitting_point = pb.m_surface.min.y + static_cast<int>(pb.m_height * 0.5f - 0.5f);
                 }
                 else
                 {
@@ -884,12 +797,8 @@ namespace
 
         void split_pixel_block(
             PixelBlock&                         pb,
-            vector<PixelBlock>&                 source_blocks,
-            vector<PixelBlock>&                 output_blocks) const
+            deque<PixelBlock>&                  blocks) const
         {
-            assert(pb.m_width >= BlockSplittingThreshold);
-            assert(pb.m_height >= BlockSplittingThreshold);
-
             AABB2i f_half = pb.m_surface, s_half = pb.m_surface;
 
             if (pb.m_main_axis == PixelBlock::Axis::HORIZONTAL_X)
@@ -910,13 +819,14 @@ namespace
 
             PixelBlock f_block(f_half), s_block(s_half);
 
+            // If the block is on the border of the tile, one pixel will be missed on each axis.
             assert(f_block.m_width >= BlockMinAllowedSize && f_block.m_height >= BlockMinAllowedSize);
             assert(s_block.m_width >= BlockMinAllowedSize && s_block.m_height >= BlockMinAllowedSize);
 
             f_block.m_spp = s_block.m_spp = pb.m_spp;
 
-            output_blocks.push_back(f_block);
-            output_blocks.push_back(s_block);
+            blocks.push_front(s_block);
+            blocks.push_front(f_block);
         }
 
         static float compute_pixel_error(const float* main_pixel, const float* accumulated_pixel)
@@ -936,6 +846,7 @@ namespace
             second_color *= second_rcp_weight;
             //accumulated_pixel += 4;
 
+            /*
             main_color.unpremultiply();
             main_color.rgb() = fast_linear_rgb_to_srgb(main_color.rgb());
             main_color = saturate(main_color);
@@ -945,6 +856,7 @@ namespace
             second_color.rgb() = fast_linear_rgb_to_srgb(second_color.rgb());
             second_color = saturate(second_color);
             second_color.premultiply();
+            */
 
             return (
                 abs(main_color.r - second_color.r)
