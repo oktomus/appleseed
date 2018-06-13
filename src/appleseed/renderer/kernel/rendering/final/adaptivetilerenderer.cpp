@@ -91,8 +91,8 @@ namespace renderer
 namespace
 {
 
-    const size_t BlockMinAllowedSize = 4;
-    const size_t BlockSplittingThreshold = 8;
+    const size_t BlockMinAllowedSize = 3;
+    const size_t BlockSplittingThreshold = 6;
 
     //
     // Adaptive tile renderer.
