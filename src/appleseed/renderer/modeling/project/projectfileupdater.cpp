@@ -1786,6 +1786,47 @@ namespace
             params.remove_path("render_stamp_format");
         }
     };
+
+    //
+    // Update from revision 26 to revision 27.
+    //
+
+    class UpdateFromRevision_26
+      : public Updater
+    {
+      public:
+        explicit UpdateFromRevision_26(Project& project)
+          : Updater(project, 26)
+        {
+        }
+
+        void update() override
+        {
+            update_adaptive_renderer();
+        }
+
+      private:
+        void update_adaptive_renderer()
+        {
+            for (each<ConfigurationContainer> i = m_project.configurations(); i; ++i)
+            {
+                Dictionary& root = i->get_parameters();
+
+                if (!root.dictionaries().exist("adaptive_pixel_renderer"))
+                    continue;
+
+                Dictionary& gtr = root.dictionary("adaptive_pixel_renderer");
+
+                Dictionary upr;
+                copy_if_exist(upr, "max_samples", gtr, "max_samples");
+                copy_if_exist(upr, "min_samples", gtr, "min_samples");
+                copy_if_exist(upr, "enable_diagnostics", gtr, "enable_diagnostics");
+                root.insert("adaptive_tile_renderer", upr);
+
+                root.dictionaries().remove("adaptive_pixel_renderer");
+            }
+        }
+    };
 }
 
 bool ProjectFileUpdater::update(
@@ -1844,6 +1885,7 @@ void ProjectFileUpdater::update(
       CASE_UPDATE_FROM_REVISION(23);
       CASE_UPDATE_FROM_REVISION(24);
       CASE_UPDATE_FROM_REVISION(25);
+      CASE_UPDATE_FROM_REVISION(26);
 
       case ProjectFormatRevision:
         // Project is up-to-date.

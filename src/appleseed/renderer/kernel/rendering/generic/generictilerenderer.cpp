@@ -133,7 +133,6 @@ namespace
             TileStack aov_tiles = frame.aov_images().tiles(tile_x, tile_y);
             const int tile_origin_x = static_cast<int>(frame_properties.m_tile_width * tile_x);
             const int tile_origin_y = static_cast<int>(frame_properties.m_tile_height * tile_y);
-            const size_t tile_index = tile_x + tile_y * (frame_properties.m_canvas_width / static_cast<float>(frame_properties.m_tile_width));
 
             // Compute the image space bounding box of the pixels to render.
             AABB2i tile_bbox;
