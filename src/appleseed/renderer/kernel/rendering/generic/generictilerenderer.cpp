@@ -59,7 +59,6 @@
 #include "foundation/utility/iostreamop.h"
 #include "foundation/utility/job.h"
 #include "foundation/utility/statistics.h"
-#include "foundation/utility/stopwatch.h"
 #include "foundation/utility/string.h"
 
 // Standard headers.
@@ -178,9 +177,6 @@ namespace
                     tile_bbox);
             assert(framebuffer);
 
-            Stopwatch<DefaultWallclockTimer> stopwatch;
-            stopwatch.start();
-
             // Loop over tile pixels.
             for (size_t i = 0, e = m_pixel_ordering.size(); i < e; ++i)
             {
@@ -217,11 +213,6 @@ namespace
                     m_aov_accumulators,
                     *framebuffer);
             }
-
-            stopwatch.measure();
-            RENDERER_LOG_DEBUG("Tile %s, Total time [%s]",
-                pretty_uint(tile_index).c_str(),
-                pretty_time(stopwatch.get_seconds()).c_str());
 
             // Develop the framebuffer to the tile.
             framebuffer->develop_to_tile(tile, aov_tiles);
