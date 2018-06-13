@@ -83,15 +83,17 @@ namespace renderer
     //
     // Reference:
     //
-    // A Hierarchical Automatic Stopping Condition for Monte Carlo Global Illumination
+    // A Hierarchical Automatic Stopping Condition for Monte Carlo Global Illumination.
     // https://jo.dreggn.org/home/2009_stopping.pdf
     //
 
 namespace
 {
 
+    // Minimum allowed size for a block of pixel.
     const size_t BlockMinAllowedSize = 3;
-    const size_t BlockSplittingThreshold = 6;
+    // Minimum allowed size for a block of pixel before splitting.
+    const size_t BlockSplittingThreshold = BlockMinAllowedSize * 2;
 
     //
     // Adaptive tile renderer.
@@ -120,9 +122,7 @@ namespace
           , m_aov_accumulators(frame)
           , m_framebuffer_factory(framebuffer_factory)
           , m_params(params)
-          , m_total_samples(0)
           , m_total_saved_samples(0)
-          , m_max_samples(0)
           , m_total_pixel_converged(0)
           , m_total_pixel(0)
         {
@@ -158,13 +158,16 @@ namespace
                 "  min samples                   %s\n"
                 "  max samples                   %s\n"
                 "  error threshold               %f\n"
-                "  splitting threshold           %f\n"
                 "  diagnostics                   %s",
                 pretty_uint(m_params.m_min_samples).c_str(),
                 pretty_uint(m_params.m_max_samples).c_str(),
                 m_params.m_error_threshold,
-                m_params.m_splitting_threshold,
                 are_diagnostics_enabled() ? "on" : "off");
+
+            RENDERER_LOG_DEBUG(
+                "  splitting threshold           %f",
+                m_params.m_splitting_threshold);
+
 
             m_sample_renderer->print_settings();
         }
@@ -244,29 +247,28 @@ namespace
 
             const size_t pixel_count = framebuffer->get_width() * framebuffer->get_height();
 
-            // Pixel rendering.
-            deque<PixelBlock> pixel_blocks;
+            // Blocks rendering.
+            deque<PixelBlock> rendering_blocks(1, PixelBlock(padded_tile_bbox));
             vector<PixelBlock> finished_blocks;
-            pixel_blocks.emplace_front(padded_tile_bbox);
 
             while (true)
             {
-                if (abort_switch.is_aborted() || pixel_blocks.size() < 1)
+                // Check if image is converged or rendering was aborted.
+                if (abort_switch.is_aborted() || rendering_blocks.size() < 1)
                 {
-                    finished_blocks.insert(finished_blocks.end(), pixel_blocks.begin(), pixel_blocks.end());
+                    finished_blocks.insert(finished_blocks.end(), rendering_blocks.begin(), rendering_blocks.end());
                     break;
                 }
 
-                PixelBlock& pb = pixel_blocks.front();
-                pixel_blocks.pop_front();
-
-                const int remaining_samples = m_params.m_max_samples - pb.m_spp;
+                // Sample the block in front of the queue.
+                PixelBlock& pb = rendering_blocks.front();
+                rendering_blocks.pop_front();
 
                 // Each batch contains 'min' samples.
+                const int remaining_samples = m_params.m_max_samples - pb.m_spp;
                 const size_t batch_size = min(static_cast<int>(m_params.m_min_samples), remaining_samples);
 
                 // Draw samples.
-
                 sample_pixel_block(
                     pb,
                     abort_switch,
@@ -281,14 +283,14 @@ namespace
                     pass_hash,
                     aov_count);
 
-                // No point to continue if this is the end.
+                // Check if this was the last batch.
                 if (remaining_samples - batch_size < 1)
                 {
                     finished_blocks.push_back(pb);
                 }
                 else
                 {
-                    // Evaluate error metric.
+                    // Evaluate block's variance.
                     evaluate_pixel_block_error(
                         pb,
                         framebuffer,
@@ -301,52 +303,30 @@ namespace
                     }
                     else if (pb.m_splitting_point != 0)
                     {
-                        split_pixel_block(pb, pixel_blocks);
+                        split_pixel_block(pb, rendering_blocks);
                     }
                     else
                     {
                         // Block's variance is too high and it needs to be sampled.
-                        pixel_blocks.push_front(pb);
+                        rendering_blocks.push_front(pb);
                     }
                 }
             }
 
-            // Pixels end.
-            // For each block.
-            size_t pb_index = 1;
-            for (auto& pb : finished_blocks)
+            // Post rendering.
+            for (size_t i = 0, n = finished_blocks.size(); i < n; ++i)
             {
+                const PixelBlock& pb = finished_blocks[i];
                 const AABB2i& pb_aabb = pb.m_surface;
                 const float pb_pixel_count = (pb_aabb.max.x - pb_aabb.min.x + 1) * (pb_aabb.max.y - pb_aabb.min.y + 1);
 
                 // Update statistics.
-                m_total_samples += pb.m_spp * pb_pixel_count;
                 m_spp.insert(pb.m_spp, pb_pixel_count);
                 m_total_saved_samples += (m_params.m_max_samples - pb.m_spp) * pb_pixel_count;
-                m_saved_samples.insert(m_params.m_max_samples - pb.m_spp, pb_pixel_count);
-                m_block_error.insert(pb.m_block_error, pb_pixel_count);
-                m_total_pixel += pb_pixel_count;
+                m_block_variance.insert(pb.m_block_error, pb_pixel_count);
+
                 if (pb.m_converged)
                     m_total_pixel_converged += pb_pixel_count;
-
-                if (!(pb.m_spp > 0))
-                {
-                    RENDERER_LOG_WARNING(
-                        "Block missing some information on tile %s\n"
-                        "  min x:           %s\n"
-                        "  max x:           %s\n"
-                        "  min y:           %s\n"
-                        "  max x:           %s\n"
-                        "  error:           %f\n"
-                        "  samples/pixel:   %s",
-                        pretty_uint(tile_index).c_str(),
-                        pretty_uint(pb.m_surface.min.x).c_str(),
-                        pretty_uint(pb.m_surface.max.x).c_str(),
-                        pretty_uint(pb.m_surface.min.y).c_str(),
-                        pretty_uint(pb.m_surface.max.y).c_str(),
-                        pb.m_block_error,
-                        pretty_uint(pb.m_spp).c_str());
-                }
 
                 if (!are_diagnostics_enabled())
                     continue;
@@ -375,7 +355,7 @@ namespace
                                         static_cast<float>(m_params.m_max_samples),
                                         0.0f, 1.0f);
 
-                            Color3f pb_color = integer_to_color(pass_hash * tile_index + pb_index);
+                            Color3f pb_color = integer_to_color(pass_hash * tile_index + i + 1);
                             values[2] = pb_color[0];
                             values[3] = pb_color[1];
                             values[4] = pb_color[2];
@@ -384,12 +364,10 @@ namespace
                         }
                     }
                 }
-
-                pb_index++;
             }
 
             // Update statistics.
-            m_max_samples += pixel_count * m_params.m_max_samples;
+            m_total_pixel += pixel_count;
             m_block_amount.insert(finished_blocks.size());
 
             // Develop the framebuffer to the tile.
@@ -414,6 +392,7 @@ namespace
 
             if (are_diagnostics_enabled())
             {
+                // 5 channels required: 3 for block color ids, 1 for variation and 1 for sample amount.
                 m_diagnostics.reset(new Tile(
                     tile.get_width(), tile.get_height(), 5, PixelFormatFloat));
             }
@@ -467,14 +446,15 @@ namespace
         StatisticsVector get_statistics() const override
         {
             Statistics stats;
-            stats.insert("max theorical samples", m_max_samples);
-            stats.insert("total samples", m_total_samples);
+            // How many samples per pixel were made.
             stats.insert("samples/pixel", m_spp);
-            stats.insert("total samples saved", m_total_saved_samples);
-            stats.insert("saved samples/pixel", m_saved_samples);
-            stats.insert_percent("saved samples rate", m_total_saved_samples, m_max_samples);
-            stats.insert("block error", m_block_error, 4);
+            // How many samples were saved compared to uniform rendering.
+            stats.insert_percent("saved samples", m_total_saved_samples, m_total_pixel * m_params.m_max_samples);
+            // Variance of pixel blocks.
+            stats.insert("variance", m_block_variance, 4);
+            // How many pixel block per tile.
             stats.insert("blocks/tile", m_block_amount);
+            // How many block converged.
             stats.insert_percent("convergence rate", m_total_pixel_converged, m_total_pixel);
 
             StatisticsVector vec;
@@ -534,28 +514,27 @@ namespace
 
             explicit Parameters(const ParamArray& params)
               : m_sampling_mode(get_sampling_context_mode(params))
-              , m_min_samples(params.get_required<size_t>("min_samples", 32))
-              , m_max_samples(params.get_required<size_t>("max_samples", 512))
-              , m_error_threshold(params.get_required<float>("precision", 0.01f))
+              , m_min_samples(params.get_required<size_t>("min_samples", 16))
+              , m_max_samples(params.get_required<size_t>("max_samples", 256))
+              , m_error_threshold(params.get_required<float>("precision", 0.004f))
             {
-                m_splitting_threshold = m_error_threshold * 256;
+                m_splitting_threshold = m_error_threshold * 256.0f;
             }
         };
 
         const Parameters                        m_params;
+        unique_ptr<Tile>                        m_diagnostics;
         size_t                                  m_variation_aov_index;
         size_t                                  m_samples_aov_index;
         size_t                                  m_block_coverage_aov_index;
-        size_t                                  m_total_samples;
-        Population<uint64>                      m_spp;
-        size_t                                  m_total_saved_samples;
-        Population<uint64>                      m_saved_samples;
+
+        // Members used for statistics.
         Population<size_t>                      m_block_amount;
-        size_t                                  m_max_samples;
-        size_t                                  m_total_pixel_converged;
+        Population<float>                       m_block_variance;
+        Population<uint64>                      m_spp;
         size_t                                  m_total_pixel;
-        Population<float>                       m_block_error;
-        unique_ptr<Tile>                        m_diagnostics;
+        size_t                                  m_total_pixel_converged;
+        size_t                                  m_total_saved_samples;
 
         struct PixelBlock
         {
@@ -705,6 +684,7 @@ namespace
             pb.m_spp += batch_size;
         }
 
+        // Compute the variance of a given block.
         void evaluate_pixel_block_error(
             PixelBlock&                         pb,
             ShadingResultFrameBuffer*           framebuffer,
@@ -742,6 +722,7 @@ namespace
 
             pb.m_block_error = error * scale_factor;
 
+            // Decide if the blocks needs to be splitted, sampled and if it has converged.
             if (pb.m_block_error <= m_params.m_error_threshold)
             {
                 pb.m_converged = true;
@@ -769,6 +750,7 @@ namespace
             }
         }
 
+        // Split the given block in two.
         void split_pixel_block(
             PixelBlock&                         pb,
             deque<PixelBlock>&                  blocks) const
@@ -803,6 +785,7 @@ namespace
             blocks.push_front(f_block);
         }
 
+        // Compute the variance between 2 pixels.
         static float compute_pixel_error(const float* main_pixel, const float* accumulated_pixel)
         {
             // Weight.
