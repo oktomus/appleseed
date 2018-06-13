@@ -340,10 +340,10 @@ namespace
 
                 // Update statistics.
                 m_total_samples += pb.m_spp * pb_pixel_count;
-                m_spp.insert(pb.m_spp);
+                m_spp.insert(pb.m_spp, pb_pixel_count);
                 m_total_saved_samples += (m_params.m_max_samples - pb.m_spp) * pb_pixel_count;
-                m_saved_samples.insert(m_params.m_max_samples - pb.m_spp);
-                m_block_error.insert(pb.m_block_error);
+                m_saved_samples.insert(m_params.m_max_samples - pb.m_spp, pb_pixel_count);
+                m_block_error.insert(pb.m_block_error, pb_pixel_count);
                 m_total_pixel += pb_pixel_count;
                 if (pb.m_converged)
                     m_total_pixel_converged += pb_pixel_count;
@@ -367,6 +367,9 @@ namespace
                         pretty_uint(pb.m_spp).c_str());
                 }
 
+                if (!are_diagnostics_enabled())
+                    continue;
+
                 for (int y = pb_aabb.min.y; y <= pb_aabb.max.y; ++y)
                 {
                     for (int x = pb_aabb.min.x; x <= pb_aabb.max.x; ++x)
@@ -377,7 +380,7 @@ namespace
                         if (!padded_tile_bbox.contains(pt)) continue;
 
                         // Store diagnostics values in the diagnostics tile.
-                        if (are_diagnostics_enabled() && tile_bbox.contains(pt))
+                        if (tile_bbox.contains(pt))
                         {
                             Color<float, 5> values;
 
