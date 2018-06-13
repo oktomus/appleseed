@@ -249,8 +249,6 @@ namespace
             vector<PixelBlock> finished_blocks;
             pixel_blocks.emplace_front(padded_tile_bbox);
 
-            double sampling_time = 0.0, variance_time = 0.0;
-
             while (true)
             {
                 if (abort_switch.is_aborted() || pixel_blocks.size() < 1)
@@ -929,7 +927,7 @@ Dictionary AdaptiveTileRendererFactory::get_params_metadata()
         "precision",
         Dictionary()
             .insert("type", "float")
-            .insert("default", "0.003")
+            .insert("default", "0.002")
             .insert("label", "Precision")
             .insert("help", "Precision factor, the lower it is, the more it will likely sample a pixel"));
 
