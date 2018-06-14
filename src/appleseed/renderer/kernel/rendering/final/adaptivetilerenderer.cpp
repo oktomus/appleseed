@@ -94,6 +94,8 @@ namespace
     const size_t BlockMinAllowedSize = 3;
     // Minimum allowed size for a block of pixel before splitting.
     const size_t BlockSplittingThreshold = BlockMinAllowedSize * 2;
+    // Option to enable sRGB conversion when computing variance.
+    const bool VarianceComputeConvertBlockToSRGB = false;
 
     //
     // Adaptive tile renderer.
@@ -291,7 +293,7 @@ namespace
                 else
                 {
                     // Evaluate block's variance.
-                    evaluate_pixel_block_error(
+                    const int splitting_point = evaluate_pixel_block_error(
                         pb,
                         framebuffer,
                         second_framebuffer);
@@ -301,9 +303,9 @@ namespace
                     {
                         finished_blocks.push_back(pb);
                     }
-                    else if (pb.m_splitting_point != 0)
+                    else if (splitting_point != 0)
                     {
-                        split_pixel_block(pb, rendering_blocks);
+                        split_pixel_block(pb, rendering_blocks, splitting_point);
                     }
                     else
                     {
@@ -317,8 +319,8 @@ namespace
             for (size_t i = 0, n = finished_blocks.size(); i < n; ++i)
             {
                 const PixelBlock& pb = finished_blocks[i];
-                const AABB2i& pb_aabb = pb.m_surface;
-                const float pb_pixel_count = (pb_aabb.max.x - pb_aabb.min.x + 1) * (pb_aabb.max.y - pb_aabb.min.y + 1);
+                const AABB2i& pb_image_aabb = AABB2i::intersect(pb.m_surface, tile_bbox);
+                const float pb_pixel_count = pb_image_aabb.volume();
 
                 // Update statistics.
                 m_spp.insert(pb.m_spp, pb_pixel_count);
@@ -331,37 +333,32 @@ namespace
                 if (!are_diagnostics_enabled())
                     continue;
 
-                for (int y = pb_aabb.min.y; y <= pb_aabb.max.y; ++y)
+                for (int y = pb_image_aabb.min.y; y <= pb_image_aabb.max.y; ++y)
                 {
-                    for (int x = pb_aabb.min.x; x <= pb_aabb.max.x; ++x)
+                    for (int x = pb_image_aabb.min.x; x <= pb_image_aabb.max.x; ++x)
                     {
                         // Retrieve the coordinates of the pixel in the padded tile.
                         const Vector2i pt(x, y);
 
-                        if (!padded_tile_bbox.contains(pt)) continue;
-
                         // Store diagnostics values in the diagnostics tile.
-                        if (tile_bbox.contains(pt))
-                        {
-                            Color<float, 5> values;
+                        Color<float, 5> values;
 
-                            values[0] = pb.m_block_error;
-                            values[1] =
-                                m_params.m_min_samples == m_params.m_max_samples
-                                ? 1.0f
-                                : fit(
-                                        static_cast<float>(pb.m_spp),
-                                        static_cast<float>(m_params.m_min_samples),
-                                        static_cast<float>(m_params.m_max_samples),
-                                        0.0f, 1.0f);
+                        values[0] = pb.m_block_error;
+                        values[1] =
+                            m_params.m_min_samples == m_params.m_max_samples
+                            ? 1.0f
+                            : fit(
+                                    static_cast<float>(pb.m_spp),
+                                    static_cast<float>(m_params.m_min_samples),
+                                    static_cast<float>(m_params.m_max_samples),
+                                    0.0f, 1.0f);
 
-                            Color3f pb_color = integer_to_color(pass_hash * tile_index + i + 1);
-                            values[2] = pb_color[0];
-                            values[3] = pb_color[1];
-                            values[4] = pb_color[2];
+                        Color3f pb_color = integer_to_color(pass_hash * tile_index + i + 1);
+                        values[2] = pb_color[0];
+                        values[3] = pb_color[1];
+                        values[4] = pb_color[2];
 
-                            m_diagnostics->set_pixel(pt.x, pt.y, values);
-                        }
+                        m_diagnostics->set_pixel(pt.x, pt.y, values);
                     }
                 }
             }
@@ -536,16 +533,18 @@ namespace
         size_t                                  m_total_pixel_converged;
         size_t                                  m_total_saved_samples;
 
+        // A block of pixel used for adaptive sampling.
+        // The first block is the whole tile including margins.
+        // Child blocks not be overlapping.
         struct PixelBlock
         {
+            // The bounding box of the block, including margins.
             AABB2i                              m_surface;
-            size_t                              m_area;
-            size_t                              m_width;
-            size_t                              m_height;
+            // How many samples/pixel were made so far.
             size_t                              m_spp;
+            // Variance of the pixel block.
             float                               m_block_error;
             bool                                m_converged;
-            size_t                              m_splitting_point;
 
             enum Axis
             {
@@ -558,17 +557,13 @@ namespace
             explicit PixelBlock(
                 const AABB2i&       surface)
               : m_surface(surface)
-              , m_width(surface.max.x - surface.min.x + 1)
-              , m_height(surface.max.y - surface.min.y + 1)
               , m_spp(0)
               , m_block_error(0)
               , m_converged(false)
-              , m_splitting_point(0)
             {
                 assert(m_surface.is_valid());
-                m_area = m_width * m_height;
 
-                if (m_width >= m_height)
+                if (m_surface.extent(0) >= m_surface.extent(1))
                     m_main_axis = Axis::HORIZONTAL_X; // block is wider
                 else
                     m_main_axis = Axis::VERTICAL_Y; // block is taller
@@ -685,31 +680,29 @@ namespace
         }
 
         // Compute the variance of a given block.
-        void evaluate_pixel_block_error(
+        // Returns the point on which the block should be splitted.
+        int evaluate_pixel_block_error(
             PixelBlock&                         pb,
             ShadingResultFrameBuffer*           framebuffer,
             ShadingResultFrameBuffer*           second_framebuffer)
         {
             float error = 0.0f;
+            int splitting_point = 0;
 
-            AABB2i block_area = pb.m_surface;
-            const AABB2i img_area = framebuffer->get_crop_window();
-            block_area.min.x = max(0, block_area.min.x);
-            block_area.min.y = max(0, block_area.min.y);
-            block_area.max.x = min(img_area.max.x, block_area.max.x);
-            block_area.max.y = min(img_area.max.y, block_area.max.y);
+            const AABB2i img_bb = framebuffer->get_crop_window();
+            AABB2i block_image_bb = AABB2i::intersect(img_bb, pb.m_surface);
 
-            const float pixel_count = (block_area.max.x - block_area.min.x + 1) * (block_area.max.y - block_area.min.y + 1);
-            const float img_pixel_count = (img_area.max.x - img_area.min.x + 1) * (img_area.max.y - img_area.min.y + 1);
+            const float pixel_count = block_image_bb.volume();
+            const float img_pixel_count = img_bb.volume();
 
             // Compute scale factor as the block area over the image area.
             double scale_factor = fast_sqrt(pixel_count / img_pixel_count) / pixel_count;
 
             // Loop over block pixels.
-            for (int y = block_area.min.y; y <= block_area.max.y; ++y)
+            for (int y = block_image_bb.min.y; y <= block_image_bb.max.y; ++y)
             {
                 assert(y >= 0 && y < framebuffer->get_height());
-                for (int x = block_area.min.x; x <= block_area.max.x; ++x)
+                for (int x = block_image_bb.min.x; x <= block_image_bb.max.x; ++x)
                 {
                     assert(x >= 0 && x < framebuffer->get_width());
 
@@ -730,44 +723,39 @@ namespace
             else if (pb.m_block_error <= m_params.m_splitting_threshold)
             {
                 if (pb.m_main_axis == PixelBlock::Axis::HORIZONTAL_X
-                    && pb.m_width >= BlockSplittingThreshold)
+                    && block_image_bb.extent(0) >= BlockSplittingThreshold)
                 {
-                    pb.m_splitting_point = pb.m_surface.min.x + static_cast<int>(pb.m_width * 0.5f - 0.5f);
+                    splitting_point = block_image_bb.min.x + static_cast<int>(block_image_bb.extent(0) * 0.5f - 0.5f);
                 }
                 else if (pb.m_main_axis == PixelBlock::Axis::VERTICAL_Y
-                    && pb.m_height >= BlockSplittingThreshold)
+                    && block_image_bb.extent(1) >= BlockSplittingThreshold)
                 {
-                    pb.m_splitting_point = pb.m_surface.min.y + static_cast<int>(pb.m_height * 0.5f - 0.5f);
-                }
-                else
-                {
-                    pb.m_splitting_point = 0;
+                    splitting_point = block_image_bb.min.y + static_cast<int>(block_image_bb.extent(1) * 0.5f - 0.5f);
                 }
             }
-            else
-            {
-                pb.m_splitting_point = 0;
-            }
+
+            return splitting_point;
         }
 
         // Split the given block in two.
         void split_pixel_block(
             PixelBlock&                         pb,
-            deque<PixelBlock>&                  blocks) const
+            deque<PixelBlock>&                  blocks,
+            const int&                          splitting_point) const
         {
             AABB2i f_half = pb.m_surface, s_half = pb.m_surface;
 
             if (pb.m_main_axis == PixelBlock::Axis::HORIZONTAL_X)
             {
                 // Split horizontaly.
-                f_half.max.x = pb.m_splitting_point;
-                s_half.min.x = pb.m_splitting_point + 1;
+                f_half.max.x = splitting_point;
+                s_half.min.x = splitting_point + 1;
             }
             else
             {
                 // Split verticaly.
-                f_half.max.y = pb.m_splitting_point;
-                s_half.min.y = pb.m_splitting_point + 1;
+                f_half.max.y = splitting_point;
+                s_half.min.y = splitting_point + 1;
             }
 
             assert(f_half.is_valid());
@@ -776,8 +764,8 @@ namespace
             PixelBlock f_block(f_half), s_block(s_half);
 
             // If the block is on the border of the tile, one pixel will be missed on each axis.
-            assert(f_block.m_width >= BlockMinAllowedSize && f_block.m_height >= BlockMinAllowedSize);
-            assert(s_block.m_width >= BlockMinAllowedSize && s_block.m_height >= BlockMinAllowedSize);
+            assert(f_block.m_surface.extent(0) >= BlockMinAllowedSize && f_block.m_surface.extent(1) >= BlockMinAllowedSize);
+            assert(s_block.m_surface.extent(0) >= BlockMinAllowedSize && s_block.m_surface.extent(1) >= BlockMinAllowedSize);
 
             f_block.m_spp = s_block.m_spp = pb.m_spp;
 
@@ -788,33 +776,33 @@ namespace
         // Compute the variance between 2 pixels.
         static float compute_pixel_error(const float* main_pixel, const float* accumulated_pixel)
         {
-            // Weight.
+            // Get weights.
             const float main_weight = *main_pixel++;
             const float main_rcp_weight = main_weight == 0.0f ? 0.0f : 1.0f / main_weight;
             const float second_weight = *accumulated_pixel++;
             const float second_rcp_weight = second_weight == 0.0f ? 0.0f : 1.0f / second_weight;
 
-            // Get color.
+            // Get colors and assign weights.
             Color4f main_color(abs(main_pixel[0]), abs(main_pixel[1]), abs(main_pixel[2]), abs(main_pixel[3]));
             main_color *= main_rcp_weight;
-            //main_pixel += 4;
 
             Color4f second_color(abs(accumulated_pixel[0]), abs(accumulated_pixel[1]), abs(accumulated_pixel[2]), abs(accumulated_pixel[3]));
             second_color *= second_rcp_weight;
-            //accumulated_pixel += 4;
 
-            /*
-            main_color.unpremultiply();
-            main_color.rgb() = fast_linear_rgb_to_srgb(main_color.rgb());
-            main_color = saturate(main_color);
-            main_color.premultiply();
+            if (VarianceComputeConvertBlockToSRGB)
+            {
+                main_color.unpremultiply();
+                main_color.rgb() = fast_linear_rgb_to_srgb(main_color.rgb());
+                main_color = saturate(main_color);
+                main_color.premultiply();
 
-            second_color.unpremultiply();
-            second_color.rgb() = fast_linear_rgb_to_srgb(second_color.rgb());
-            second_color = saturate(second_color);
-            second_color.premultiply();
-            */
+                second_color.unpremultiply();
+                second_color.rgb() = fast_linear_rgb_to_srgb(second_color.rgb());
+                second_color = saturate(second_color);
+                second_color.premultiply();
+            }
 
+            // Compute variance.
             return (
                 abs(main_color.r - second_color.r)
                 + abs(main_color.g - second_color.g)
