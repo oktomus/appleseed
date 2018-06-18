@@ -31,6 +31,8 @@
 #include "filteredtile.h"
 
 // appleseed.foundation headers.
+#include "foundation/image/color.h"
+#include "foundation/image/colorspace.h"
 #include "foundation/image/pixel.h"
 #include "foundation/math/scalar.h"
 #include "foundation/math/vector.h"
@@ -161,6 +163,45 @@ void FilteredTile::atomic_add(
                 foundation::atomic_add(ptr++, values[i] * weight);
         }
     }
+}
+
+float FilteredTile::compute_weighted_pixel_variance(
+    const float*        main,
+    const float*        second,
+    const bool          convert_to_srgb)
+{
+    // Get weights.
+    const float main_weight = *main++;
+    const float main_rcp_weight = main_weight == 0.0f ? 0.0f : 1.0f / main_weight;
+    const float second_weight = *second++;
+    const float second_rcp_weight = second_weight == 0.0f ? 0.0f : 1.0f / second_weight;
+
+    // Get colors and assign weights.
+    Color4f main_color(abs(main[0]), abs(main[1]), abs(main[2]), abs(main[3]));
+    main_color *= main_rcp_weight;
+
+    Color4f second_color(abs(second[0]), abs(second[1]), abs(second[2]), abs(second[3]));
+    second_color *= second_rcp_weight;
+
+    if (convert_to_srgb)
+    {
+        main_color.unpremultiply();
+        main_color.rgb() = fast_linear_rgb_to_srgb(main_color.rgb());
+        main_color = saturate(main_color);
+        main_color.premultiply();
+
+        second_color.unpremultiply();
+        second_color.rgb() = fast_linear_rgb_to_srgb(second_color.rgb());
+        second_color = saturate(second_color);
+        second_color.premultiply();
+    }
+
+    // Compute variance.
+    return (
+        abs(main_color.r - second_color.r)
+        + abs(main_color.g - second_color.g)
+        + abs(main_color.b - second_color.b)
+       ) / fast_sqrt(main_color.r + main_color.g + main_color.b);
 }
 
 }   // namespace foundation

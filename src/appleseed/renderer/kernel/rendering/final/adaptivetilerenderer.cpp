@@ -52,8 +52,6 @@
 #include "foundation/image/tile.h"
 #include "foundation/math/aabb.h"
 #include "foundation/math/filter.h"
-#include "foundation/math/fastmath.h"
-#include "foundation/math/hash.h"
 #include "foundation/math/ordering.h"
 #include "foundation/math/population.h"
 #include "foundation/math/scalar.h"
@@ -710,7 +708,7 @@ namespace
                     const float* main_ptr = framebuffer->pixel(x, y);
                     const float* second_ptr = second_framebuffer->pixel(x, y);
 
-                    error += compute_pixel_error(main_ptr, second_ptr);
+                    error += FilteredTile::compute_weighted_pixel_variance(main_ptr, second_ptr, VarianceComputeConvertBlockToSRGB);
                 }
             }
 
@@ -772,43 +770,6 @@ namespace
 
             blocks.push_front(s_block);
             blocks.push_front(f_block);
-        }
-
-        // Compute the variance between 2 pixels.
-        static float compute_pixel_error(const float* main_pixel, const float* accumulated_pixel)
-        {
-            // Get weights.
-            const float main_weight = *main_pixel++;
-            const float main_rcp_weight = main_weight == 0.0f ? 0.0f : 1.0f / main_weight;
-            const float second_weight = *accumulated_pixel++;
-            const float second_rcp_weight = second_weight == 0.0f ? 0.0f : 1.0f / second_weight;
-
-            // Get colors and assign weights.
-            Color4f main_color(abs(main_pixel[0]), abs(main_pixel[1]), abs(main_pixel[2]), abs(main_pixel[3]));
-            main_color *= main_rcp_weight;
-
-            Color4f second_color(abs(accumulated_pixel[0]), abs(accumulated_pixel[1]), abs(accumulated_pixel[2]), abs(accumulated_pixel[3]));
-            second_color *= second_rcp_weight;
-
-            if (VarianceComputeConvertBlockToSRGB)
-            {
-                main_color.unpremultiply();
-                main_color.rgb() = fast_linear_rgb_to_srgb(main_color.rgb());
-                main_color = saturate(main_color);
-                main_color.premultiply();
-
-                second_color.unpremultiply();
-                second_color.rgb() = fast_linear_rgb_to_srgb(second_color.rgb());
-                second_color = saturate(second_color);
-                second_color.premultiply();
-            }
-
-            // Compute variance.
-            return (
-                abs(main_color.r - second_color.r)
-                + abs(main_color.g - second_color.g)
-                + abs(main_color.b - second_color.b)
-                ) / fast_sqrt(main_color.r + main_color.g + main_color.b);
         }
 
         static Color4f colorize_samples(const float value)

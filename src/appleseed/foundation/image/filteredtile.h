@@ -40,6 +40,12 @@
 #include <cassert>
 #include <cstddef>
 
+// Forward declarations.
+namespace founation
+{
+    class Color4f;
+}
+
 namespace foundation
 {
 
@@ -130,6 +136,15 @@ class FilteredTile
         const float         x,
         const float         y,
         const float*        values);
+
+    // Compute the variance of a weighted pixel given the value of the same pixel with 2 different samples count.
+    // The first given pixel `main` contains N samples.
+    // The second given pixel `second` contains N/2 samples (samples included in `second` are also in `main`).
+    // If `convert_to_srgb` is true, pixels are converted to sRGB before computing the variance.
+    static float compute_weighted_pixel_variance(
+        const float*        main,
+        const float*        second,
+        const bool          convert_to_srgb = false);
 
   protected:
     const AABB2u            m_crop_window;
