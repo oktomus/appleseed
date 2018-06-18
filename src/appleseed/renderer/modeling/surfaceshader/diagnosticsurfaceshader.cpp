@@ -49,6 +49,7 @@
 #include "renderer/utility/transformsequence.h"
 
 // appleseed.foundation headers.
+#include "foundation/image/color.h"
 #include "foundation/image/colorspace.h"
 #include "foundation/math/distance.h"
 #include "foundation/math/hash.h"
@@ -200,22 +201,6 @@ namespace
             static_cast<float>((vec[1] + T(1.0)) * T(0.5)),
             static_cast<float>((vec[2] + T(1.0)) * T(0.5)));
 #endif
-    }
-
-    // Compute a color from a given integer.
-    template <typename T>
-    inline Color3f integer_to_color(const T i)
-    {
-        const uint32 u = static_cast<uint32>(i);    // keep the low 32 bits
-
-        const uint32 x = hash_uint32(u);
-        const uint32 y = hash_uint32(u + 1);
-        const uint32 z = hash_uint32(u + 2);
-
-        return Color3f(
-            static_cast<float>(x) * (1.0f / 4294967295.0f),
-            static_cast<float>(y) * (1.0f / 4294967295.0f),
-            static_cast<float>(z) * (1.0f / 4294967295.0f));
     }
 }
 

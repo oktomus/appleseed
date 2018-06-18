@@ -47,6 +47,7 @@
 
 // appleseed.foundation headers.
 #include "foundation/image/canvasproperties.h"
+#include "foundation/image/color.h"
 #include "foundation/image/image.h"
 #include "foundation/image/tile.h"
 #include "foundation/math/aabb.h"
@@ -820,22 +821,6 @@ namespace
         static Color4f colorize_variation(const float value)
         {
             return Color4f(0.0f, value, 0.0f, 1.0f);
-        }
-
-        // Compute a color from a given integer.
-        template <typename T>
-        static Color3f integer_to_color(const T i)
-        {
-            const uint32 u = static_cast<uint32>(i);    // keep the low 32 bits
-
-            const uint32 x = hash_uint32(u);
-            const uint32 y = hash_uint32(u + 1);
-            const uint32 z = hash_uint32(u + 2);
-
-            return Color3f(
-                static_cast<float>(x) * (1.0f / 4294967295.0f),
-                static_cast<float>(y) * (1.0f / 4294967295.0f),
-                static_cast<float>(z) * (1.0f / 4294967295.0f));
         }
     };
 }

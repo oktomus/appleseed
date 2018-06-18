@@ -32,6 +32,7 @@
 
 // appleseed.foundation headers.
 #include "foundation/math/fp.h"
+#include "foundation/math/hash.h"
 #include "foundation/math/matrix.h"
 #include "foundation/math/scalar.h"
 #include "foundation/platform/types.h"
@@ -320,6 +321,15 @@ typedef Color<double,   3> Color3d;
 typedef Color<uint8,    4> Color4b;
 typedef Color<float,    4> Color4f;
 typedef Color<double,   4> Color4d;
+
+
+//
+// Functions based on colors.
+//
+
+// Compute a color from a given integer.
+template <typename T>
+Color3f integer_to_color(const T i);
 
 
 //
@@ -1113,6 +1123,27 @@ inline void Color<T, 4>::unpremultiply()
         b *= rcp_a;
     }
 }
+
+
+//
+// Color functions implementation.
+//
+
+template <typename T>
+Color3f integer_to_color(const T i)
+{
+    const uint32 u = static_cast<uint32>(i);    // keep the low 32 bits
+
+    const uint32 x = hash_uint32(u);
+    const uint32 y = hash_uint32(u + 1);
+    const uint32 z = hash_uint32(u + 2);
+
+    return Color3f(
+        static_cast<float>(x) * (1.0f / 4294967295.0f),
+        static_cast<float>(y) * (1.0f / 4294967295.0f),
+        static_cast<float>(z) * (1.0f / 4294967295.0f));
+}
+
 
 }       // namespace foundation
 
