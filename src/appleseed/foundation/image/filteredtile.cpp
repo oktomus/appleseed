@@ -204,4 +204,39 @@ float FilteredTile::compute_weighted_pixel_variance(
        ) / fast_sqrt(main_color.r + main_color.g + main_color.b);
 }
 
+float FilteredTile::compute_tile_variance(
+    const AABB2u&       bb,
+    FilteredTile*       main,
+    FilteredTile*       second,
+    const bool          convert_to_srgb)
+{
+    float error = 0.0f;
+
+    assert(main->get_crop_window() == second->get_crop_window());
+    assert(main->get_crop_window().contains(bb.min));
+    assert(main->get_crop_window().contains(bb.max));
+    assert(bb.min.y >= 0 && bb.max.y <= main->get_height());
+    assert(bb.min.x >= 0 && bb.max.x <= main->get_width());
+
+    const float pixel_count = bb.volume();
+    const float img_pixel_count = main->get_crop_window().volume();
+
+    // Compute scale factor as the block area over the image area.
+    double scale_factor = fast_sqrt(pixel_count / img_pixel_count) / pixel_count;
+
+    // Loop over block pixels.
+    for (int y = bb.min.y; y <= bb.max.y; ++y)
+    {
+        for (int x = bb.min.x; x <= bb.max.x; ++x)
+        {
+            const float* main_ptr = main->pixel(x, y);
+            const float* second_ptr = second->pixel(x, y);
+
+            error += compute_weighted_pixel_variance(main_ptr, second_ptr, convert_to_srgb);
+        }
+    }
+
+    return error * scale_factor;
+}
+
 }   // namespace foundation

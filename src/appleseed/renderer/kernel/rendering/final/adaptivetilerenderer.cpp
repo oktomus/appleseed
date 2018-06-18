@@ -292,19 +292,38 @@ namespace
                 else
                 {
                     // Evaluate block's variance.
-                    const int splitting_point = evaluate_pixel_block_error(
-                        pb,
-                        framebuffer,
-                        second_framebuffer);
+                    const AABB2u& block_image_bb = AABB2i::intersect(framebuffer->get_crop_window(), pb.m_surface);
 
-                    // Take a decision.
-                    if (pb.m_converged)
+                    pb.m_block_error = FilteredTile::compute_tile_variance(
+                        block_image_bb,
+                        framebuffer,
+                        second_framebuffer,
+                        VarianceComputeConvertBlockToSRGB);
+
+                    // Decide if the blocks needs to be splitted, sampled and if it has converged.
+                    if (pb.m_block_error <= m_params.m_error_threshold)
                     {
+                        pb.m_converged = true;
                         finished_blocks.push_back(pb);
                     }
-                    else if (splitting_point != 0)
+                    else if (pb.m_block_error <= m_params.m_splitting_threshold)
                     {
-                        split_pixel_block(pb, rendering_blocks, splitting_point);
+                        if (pb.m_main_axis == PixelBlock::Axis::HORIZONTAL_X
+                                && block_image_bb.extent(0) >= BlockSplittingThreshold)
+                        {
+                            split_pixel_block(
+                                pb,
+                                rendering_blocks,
+                                block_image_bb.min.x + static_cast<int>(block_image_bb.extent(0) * 0.5f - 0.5f));
+                        }
+                        else if (pb.m_main_axis == PixelBlock::Axis::VERTICAL_Y
+                                && block_image_bb.extent(1) >= BlockSplittingThreshold)
+                        {
+                            split_pixel_block(
+                                pb,
+                                rendering_blocks,
+                                block_image_bb.min.y + static_cast<int>(block_image_bb.extent(1) * 0.5f - 0.5f));
+                        }
                     }
                     else
                     {
@@ -676,64 +695,6 @@ namespace
             }
 
             pb.m_spp += batch_size;
-        }
-
-        // Compute the variance of a given block.
-        // Returns the point on which the block should be splitted.
-        int evaluate_pixel_block_error(
-            PixelBlock&                         pb,
-            ShadingResultFrameBuffer*           framebuffer,
-            ShadingResultFrameBuffer*           second_framebuffer)
-        {
-            float error = 0.0f;
-            int splitting_point = 0;
-
-            const AABB2i img_bb = framebuffer->get_crop_window();
-            AABB2i block_image_bb = AABB2i::intersect(img_bb, pb.m_surface);
-
-            const float pixel_count = block_image_bb.volume();
-            const float img_pixel_count = img_bb.volume();
-
-            // Compute scale factor as the block area over the image area.
-            double scale_factor = fast_sqrt(pixel_count / img_pixel_count) / pixel_count;
-
-            // Loop over block pixels.
-            for (int y = block_image_bb.min.y; y <= block_image_bb.max.y; ++y)
-            {
-                assert(y >= 0 && y < framebuffer->get_height());
-                for (int x = block_image_bb.min.x; x <= block_image_bb.max.x; ++x)
-                {
-                    assert(x >= 0 && x < framebuffer->get_width());
-
-                    const float* main_ptr = framebuffer->pixel(x, y);
-                    const float* second_ptr = second_framebuffer->pixel(x, y);
-
-                    error += FilteredTile::compute_weighted_pixel_variance(main_ptr, second_ptr, VarianceComputeConvertBlockToSRGB);
-                }
-            }
-
-            pb.m_block_error = error * scale_factor;
-
-            // Decide if the blocks needs to be splitted, sampled and if it has converged.
-            if (pb.m_block_error <= m_params.m_error_threshold)
-            {
-                pb.m_converged = true;
-            }
-            else if (pb.m_block_error <= m_params.m_splitting_threshold)
-            {
-                if (pb.m_main_axis == PixelBlock::Axis::HORIZONTAL_X
-                    && block_image_bb.extent(0) >= BlockSplittingThreshold)
-                {
-                    splitting_point = block_image_bb.min.x + static_cast<int>(block_image_bb.extent(0) * 0.5f - 0.5f);
-                }
-                else if (pb.m_main_axis == PixelBlock::Axis::VERTICAL_Y
-                    && block_image_bb.extent(1) >= BlockSplittingThreshold)
-                {
-                    splitting_point = block_image_bb.min.y + static_cast<int>(block_image_bb.extent(1) * 0.5f - 0.5f);
-                }
-            }
-
-            return splitting_point;
         }
 
         // Split the given block in two.

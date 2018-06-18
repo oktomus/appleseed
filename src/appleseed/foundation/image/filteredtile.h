@@ -144,6 +144,15 @@ class FilteredTile
     static float compute_weighted_pixel_variance(
         const float*        main,
         const float*        second,
+        const bool          convert_to_srgb);
+
+    // Compute the variance of the tile `second` for pixels in the bouding box `bb`.
+    // A second tile `second` is used which contains half of the samples of `main`.
+    // If `convert_to_srgb` is true, pixels are converted to sRGB before computing the variance.
+    static float compute_tile_variance(
+        const AABB2u&       bb,
+        FilteredTile*       main,
+        FilteredTile*       second,
         const bool          convert_to_srgb = false);
 
   protected:
