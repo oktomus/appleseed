@@ -291,9 +291,9 @@ namespace
                 }
                 else
                 {
-                    // Evaluate block's variance.
                     const AABB2u& block_image_bb = AABB2i::intersect(framebuffer->get_crop_window(), pb.m_surface);
 
+                    // Evaluate block's variance.
                     pb.m_block_error = FilteredTile::compute_tile_variance(
                         block_image_bb,
                         framebuffer,
@@ -323,6 +323,10 @@ namespace
                                 pb,
                                 rendering_blocks,
                                 block_image_bb.min.y + static_cast<int>(block_image_bb.extent(1) * 0.5f - 0.5f));
+                        }
+                        else
+                        {
+                            rendering_blocks.push_front(pb);
                         }
                     }
                     else
