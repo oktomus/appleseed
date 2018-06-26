@@ -204,13 +204,15 @@ float FilteredTile::compute_weighted_pixel_variance(
        ) / fast_sqrt(main_color.r + main_color.g + main_color.b);
 }
 
-float FilteredTile::compute_tile_variance(
+void FilteredTile::compute_tile_variance(
     const AABB2u&       bb,
     FilteredTile*       main,
     FilteredTile*       second,
+    float*              block_error,
+    float*              max_abs_error,
     const bool          convert_to_srgb)
 {
-    float error = 0.0f;
+    double error = 0.0;
 
     assert(main->get_crop_window() == second->get_crop_window());
     assert(main->get_crop_window().contains(bb.min));
@@ -218,11 +220,11 @@ float FilteredTile::compute_tile_variance(
     assert(bb.min.y >= 0 && bb.max.y <= main->get_height());
     assert(bb.min.x >= 0 && bb.max.x <= main->get_width());
 
-    const float pixel_count = bb.volume();
-    const float img_pixel_count = main->get_crop_window().volume();
+    float min_perror = std::numeric_limits<float>::max(),
+          max_perror = std::numeric_limits<float>::lowest();
 
-    // Compute scale factor as the block area over the image area.
-    double scale_factor = fast_sqrt(pixel_count / img_pixel_count) / pixel_count;
+    size_t pixel_count = bb.volume();
+    size_t img_pixel_count = main->get_crop_window().volume();
 
     // Loop over block pixels.
     for (int y = bb.min.y; y <= bb.max.y; ++y)
@@ -232,11 +234,22 @@ float FilteredTile::compute_tile_variance(
             const float* main_ptr = main->pixel(x, y);
             const float* second_ptr = second->pixel(x, y);
 
-            error += compute_weighted_pixel_variance(main_ptr, second_ptr, convert_to_srgb);
+            const float perror = compute_weighted_pixel_variance(main_ptr, second_ptr, convert_to_srgb);
+
+            if (perror > max_perror)
+                max_perror = perror;
+            else if (perror < min_perror)
+                min_perror = perror;
+
+            error += perror;
         }
     }
 
-    return error * scale_factor;
+    // Compute scale factor as the block area over the image area.
+    const float scale_factor = 1.0f / static_cast<float>(pixel_count);
+
+    *block_error = error * scale_factor;
+    *max_abs_error = max(abs(error * scale_factor - max_perror), abs(error * scale_factor - min_perror));
 }
 
 }   // namespace foundation

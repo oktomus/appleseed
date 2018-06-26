@@ -90,11 +90,17 @@ namespace
 {
 
     // Minimum allowed size for a block of pixel.
-    const size_t BlockMinAllowedSize = 3;
+    const size_t BlockMinAllowedSize = 4;
     // Minimum allowed size for a block of pixel before splitting.
     const size_t BlockSplittingThreshold = BlockMinAllowedSize * 2;
     // Option to enable sRGB conversion when computing variance.
-    const bool VarianceComputeConvertBlockToSRGB = false;
+    const bool VarianceComputeConvertBlockToSRGB = true;
+    // Minimum number of batch before computing variance.
+    const size_t MinimumAmountOfBatches = 3;
+    // Maximum deviation allowed for a converged block.
+    const float MaximumConvergedBlockDeviation = 0.5f;
+    // Threshold used to warn the user if blocks doesn't converge.
+    const int BlockConvergenceWarningThreshold = 50;
 
     //
     // Adaptive tile renderer.
@@ -134,11 +140,17 @@ namespace
                 m_variation_aov_index = frame.create_extra_aov_image("variation");
                 m_samples_aov_index = frame.create_extra_aov_image("samples");
                 m_block_coverage_aov_index = frame.create_extra_aov_image("block-coverage");
+                m_block_abs_error_aov_index = frame.create_extra_aov_image("block-abs-error");
+                m_accum_aov_index = frame.create_extra_aov_image("accumulation-buffer");
+                m_error_aov_index = frame.create_extra_aov_image("pixel-error");
 
                 if ((thread_index == 0) &&
                     (m_variation_aov_index == ~size_t(0)
                     || m_samples_aov_index == ~size_t(0)
-                    || m_block_coverage_aov_index == ~size_t(0)))
+                    || m_block_coverage_aov_index == ~size_t(0)
+                    || m_accum_aov_index == ~size_t(0)
+                    || m_error_aov_index == ~size_t(0)
+                    || m_block_abs_error_aov_index == ~size_t(0)))
                 {
                     RENDERER_LOG_WARNING(
                         "could not create some of the diagnostic aovs, maximum number of aovs (" FMT_SIZE_T ") reached.",
@@ -268,6 +280,7 @@ namespace
                 // Each batch contains 'min' samples.
                 const int remaining_samples = m_params.m_max_samples - pb.m_spp;
                 const size_t batch_size = min(static_cast<int>(m_params.m_min_samples), remaining_samples);
+                const size_t batch_number = (pb.m_spp / m_params.m_min_samples) + 1;
 
                 // Draw samples.
                 sample_pixel_block(
@@ -289,19 +302,24 @@ namespace
                 {
                     finished_blocks.push_back(pb);
                 }
-                else
+                else if (batch_number > MinimumAmountOfBatches)
                 {
                     const AABB2u& block_image_bb = AABB2i::intersect(framebuffer->get_crop_window(), pb.m_surface);
 
                     // Evaluate block's variance.
-                    pb.m_block_error = FilteredTile::compute_tile_variance(
+                    FilteredTile::compute_tile_variance(
                         block_image_bb,
                         framebuffer,
                         second_framebuffer,
+                        &(pb.m_block_error),
+                        &(pb.m_max_abs_error),
                         VarianceComputeConvertBlockToSRGB);
 
+                    pb.m_max_abs_error *= block_image_bb.volume();
+
                     // Decide if the blocks needs to be splitted, sampled and if it has converged.
-                    if (pb.m_block_error <= m_params.m_error_threshold)
+                    if (pb.m_block_error <= m_params.m_error_threshold
+                        && pb.m_max_abs_error < MaximumConvergedBlockDeviation)
                     {
                         pb.m_converged = true;
                         finished_blocks.push_back(pb);
@@ -335,7 +353,13 @@ namespace
                         rendering_blocks.push_front(pb);
                     }
                 }
+                else
+                {
+                    rendering_blocks.push_front(pb);
+                }
             }
+
+            size_t tile_converged_pixel = 0;
 
             // Post rendering.
             for (size_t i = 0, n = finished_blocks.size(); i < n; ++i)
@@ -350,7 +374,7 @@ namespace
                 m_block_variance.insert(pb.m_block_error, pb_pixel_count);
 
                 if (pb.m_converged)
-                    m_total_pixel_converged += pb_pixel_count;
+                    tile_converged_pixel += pb_pixel_count;
 
                 if (!are_diagnostics_enabled())
                     continue;
@@ -363,7 +387,7 @@ namespace
                         const Vector2i pt(x, y);
 
                         // Store diagnostics values in the diagnostics tile.
-                        Color<float, 5> values;
+                        Color<float, 11> values;
 
                         values[0] = pb.m_block_error;
                         values[1] =
@@ -379,6 +403,21 @@ namespace
                         values[2] = pb_color[0];
                         values[3] = pb_color[1];
                         values[4] = pb_color[2];
+                        values[5] = pb.m_max_abs_error;
+
+                        const float* main_ptr = framebuffer->pixel(x, y);
+                        const float* second_ptr = second_framebuffer->pixel(x, y);
+                        const float second_weight = *second_ptr++;
+                        const float second_rcp_weight = second_weight == 0.0f ? 0.0f : 1.0f / second_weight;
+                        Color4f second_color(second_ptr[0], second_ptr[1], second_ptr[2], second_ptr[3]);
+                        second_color *= second_rcp_weight;
+
+                        values[6] = second_color.r;
+                        values[7] = second_color.g;
+                        values[8] = second_color.b;
+                        values[9] = second_color.a;
+
+                        values[10] = FilteredTile::compute_weighted_pixel_variance(main_ptr, second_ptr, VarianceComputeConvertBlockToSRGB);
 
                         m_diagnostics->set_pixel(pt.x, pt.y, values);
                     }
@@ -387,7 +426,18 @@ namespace
 
             // Update statistics.
             m_total_pixel += pixel_count;
+            m_total_pixel_converged += tile_converged_pixel;
             m_block_amount.insert(finished_blocks.size());
+
+            // Warn the user if adaptive sampling is not efficient.
+
+            if (static_cast<float>(tile_converged_pixel) / static_cast<float>(pixel_count) < BlockConvergenceWarningThreshold / 100.0f)
+            {
+                RENDERER_LOG_WARNING(
+                    "only %s of pixels have converged, be sure to increase the maximum number of samples \n"
+                    "or the precision threshold for better performance",
+                    pretty_percent(tile_converged_pixel, pixel_count, 1).c_str());
+            }
 
             // Develop the framebuffer to the tile.
             framebuffer->develop_to_tile(tile, aov_tiles);
@@ -413,7 +463,7 @@ namespace
             {
                 // 5 channels required: 3 for block color ids, 1 for variation and 1 for sample amount.
                 m_diagnostics.reset(new Tile(
-                    tile.get_width(), tile.get_height(), 5, PixelFormatFloat));
+                    tile.get_width(), tile.get_height(), 11, PixelFormatFloat));
             }
         }
 
@@ -433,7 +483,7 @@ namespace
                 {
                     for (size_t x = 0; x < width; ++x)
                     {
-                        Color<float, 5> values;
+                        Color<float, 11> values;
                         m_diagnostics->get_pixel(x, y, values);
 
                         if (m_variation_aov_index != ~size_t(0))
@@ -444,6 +494,15 @@ namespace
 
                         if (m_block_coverage_aov_index != ~size_t(0))
                             aov_tiles.set_pixel(x, y, m_block_coverage_aov_index, Color4f(values[2], values[3], values[4], 1.0f));
+
+                        if (m_block_abs_error_aov_index != ~size_t(0))
+                            aov_tiles.set_pixel(x, y, m_block_abs_error_aov_index, Color4f(values[5], 0.0f, 0.0f, 1.0f));
+
+                        if (m_accum_aov_index != ~size_t(0))
+                            aov_tiles.set_pixel(x, y, m_accum_aov_index, Color4f(values[6], values[7], values[8], values[9]));
+
+                        if (m_error_aov_index != ~size_t(0))
+                            aov_tiles.set_pixel(x, y, m_error_aov_index, Color4f(values[10], values[10], 0.0f, 1.0f));
                     }
                 }
             }
@@ -546,6 +605,9 @@ namespace
         size_t                                  m_variation_aov_index;
         size_t                                  m_samples_aov_index;
         size_t                                  m_block_coverage_aov_index;
+        size_t                                  m_block_abs_error_aov_index;
+        size_t                                  m_accum_aov_index;
+        size_t                                  m_error_aov_index;
 
         // Members used for statistics.
         Population<size_t>                      m_block_amount;
@@ -566,6 +628,7 @@ namespace
             size_t                              m_spp;
             // Variance of the pixel block.
             float                               m_block_error;
+            float                               m_max_abs_error;
             bool                                m_converged;
 
             enum Axis
@@ -581,6 +644,7 @@ namespace
               : m_surface(surface)
               , m_spp(0)
               , m_block_error(0)
+              , m_max_abs_error(0)
               , m_converged(false)
             {
                 assert(m_surface.is_valid());
