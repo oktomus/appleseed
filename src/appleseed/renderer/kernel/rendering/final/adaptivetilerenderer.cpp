@@ -90,13 +90,11 @@ namespace
 {
 
     // Minimum allowed size for a block of pixel.
-    const size_t BlockMinAllowedSize = 4;
+    const size_t BlockMinAllowedSize = 2;
     // Minimum allowed size for a block of pixel before splitting.
     const size_t BlockSplittingThreshold = BlockMinAllowedSize * 2;
     // Option to enable sRGB conversion when computing variance.
-    const bool VarianceComputeConvertBlockToSRGB = true;
-    // Minimum number of batch before computing variance.
-    const size_t MinimumAmountOfBatches = 3;
+    const bool VarianceComputeConvertBlockToSRGB = false;
     // Maximum deviation allowed for a converged block.
     const float MaximumConvergedBlockDeviation = 0.5f;
     // Threshold used to warn the user if blocks doesn't converge.
@@ -171,10 +169,12 @@ namespace
                 "  min samples                   %s\n"
                 "  max samples                   %s\n"
                 "  error threshold               %f\n"
+                "  adaptiveness                  %f\n"
                 "  diagnostics                   %s",
                 pretty_uint(m_params.m_min_samples).c_str(),
                 pretty_uint(m_params.m_max_samples).c_str(),
-                m_params.m_error_threshold,
+                m_params.m_noise_threshold,
+                m_params.m_adaptiveness,
                 are_diagnostics_enabled() ? "on" : "off");
 
             RENDERER_LOG_DEBUG(
@@ -264,6 +264,30 @@ namespace
             deque<PixelBlock> rendering_blocks(1, PixelBlock(padded_tile_bbox));
             vector<PixelBlock> finished_blocks;
 
+            // First uniform pass based on adaptiveness setting.
+            if (m_params.m_adaptiveness < 1.0f)
+            {
+                PixelBlock& pb = rendering_blocks.front();
+
+                // First batch contains `max_samples` * `1 - adaptiveness`
+                const size_t batch_size = m_params.m_max_samples * (1.0f - m_params.m_adaptiveness);
+
+                // Draw samples.
+                sample_pixel_block(
+                    pb,
+                    abort_switch,
+                    batch_size,
+                    framebuffer,
+                    second_framebuffer,
+                    tile_bbox,
+                    tile_origin_x,
+                    tile_origin_y,
+                    frame,
+                    frame_width,
+                    pass_hash,
+                    aov_count);
+            }
+
             while (true)
             {
                 // Check if image is converged or rendering was aborted.
@@ -280,7 +304,6 @@ namespace
                 // Each batch contains 'min' samples.
                 const int remaining_samples = m_params.m_max_samples - pb.m_spp;
                 const size_t batch_size = min(static_cast<int>(m_params.m_min_samples), remaining_samples);
-                const size_t batch_number = (pb.m_spp / m_params.m_min_samples) + 1;
 
                 // Draw samples.
                 sample_pixel_block(
@@ -302,7 +325,7 @@ namespace
                 {
                     finished_blocks.push_back(pb);
                 }
-                else if (batch_number > MinimumAmountOfBatches)
+                else
                 {
                     const AABB2u& block_image_bb = AABB2i::intersect(framebuffer->get_crop_window(), pb.m_surface);
 
@@ -318,8 +341,8 @@ namespace
                     pb.m_max_abs_error *= block_image_bb.volume();
 
                     // Decide if the blocks needs to be splitted, sampled and if it has converged.
-                    if (pb.m_block_error <= m_params.m_error_threshold
-                        && pb.m_max_abs_error < MaximumConvergedBlockDeviation)
+                    if (pb.m_block_error <= m_params.m_noise_threshold)
+                        //&& pb.m_max_abs_error < MaximumConvergedBlockDeviation)
                     {
                         pb.m_converged = true;
                         finished_blocks.push_back(pb);
@@ -352,10 +375,6 @@ namespace
                         // Block's variance is too high and it needs to be sampled.
                         rendering_blocks.push_front(pb);
                     }
-                }
-                else
-                {
-                    rendering_blocks.push_front(pb);
                 }
             }
 
@@ -587,16 +606,18 @@ namespace
             const SamplingContext::Mode     m_sampling_mode;
             const size_t                    m_min_samples;
             const size_t                    m_max_samples;
-            const float                     m_error_threshold;
+            const float                     m_noise_threshold;
             float                           m_splitting_threshold;
+            float                           m_adaptiveness;
 
             explicit Parameters(const ParamArray& params)
               : m_sampling_mode(get_sampling_context_mode(params))
               , m_min_samples(params.get_required<size_t>("min_samples", 16))
               , m_max_samples(params.get_required<size_t>("max_samples", 256))
-              , m_error_threshold(params.get_required<float>("precision", 0.004f))
+              , m_noise_threshold(params.get_required<float>("noise_threshold", 0.03f))
+              , m_adaptiveness(params.get_optional<float>("adaptiveness", 0.9f))
             {
-                m_splitting_threshold = m_error_threshold * 256.0f;
+                m_splitting_threshold = m_noise_threshold * 256.0f;
             }
         };
 
@@ -870,12 +891,20 @@ Dictionary AdaptiveTileRendererFactory::get_params_metadata()
             .insert("help", "Maximum number of anti-aliasing samples"));
 
     metadata.dictionaries().insert(
-        "precision",
+        "noise_threshold",
         Dictionary()
             .insert("type", "float")
-            .insert("default", "0.002")
-            .insert("label", "Precision")
-            .insert("help", "Precision factor, the lower it is, the more it will likely sample a pixel"));
+            .insert("default", "0.03")
+            .insert("label", "Noise Threshold")
+            .insert("help", "Rendering stop threshold"));
+
+    metadata.dictionaries().insert(
+        "adaptiveness",
+        Dictionary()
+            .insert("type", "float")
+            .insert("default", "0.9")
+            .insert("label", "Adaptiveness")
+            .insert("help", "Quantity of samples generated adaptively"));
 
     return metadata;
 }

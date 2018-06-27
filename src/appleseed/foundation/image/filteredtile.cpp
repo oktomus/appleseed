@@ -246,7 +246,8 @@ void FilteredTile::compute_tile_variance(
     }
 
     // Compute scale factor as the block area over the image area.
-    const float scale_factor = 1.0f / static_cast<float>(pixel_count);
+    const float scale_factor = fast_sqrt(static_cast<double>(pixel_count) / static_cast<double>(img_pixel_count))
+        / static_cast<double>(pixel_count);
 
     *block_error = error * scale_factor;
     *max_abs_error = max(abs(error * scale_factor - max_perror), abs(error * scale_factor - min_perror));

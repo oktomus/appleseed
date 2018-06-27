@@ -471,7 +471,8 @@ namespace
 
             create_direct_link("adaptive_sampler.min_samples",              "adaptive_tile_renderer.min_samples");
             create_direct_link("adaptive_sampler.max_samples",              "adaptive_tile_renderer.max_samples");
-            create_direct_link("adaptive_sampler.precision",                "adaptive_tile_renderer.precision");
+            create_direct_link("adaptive_sampler.noise_threshold",          "adaptive_tile_renderer.noise_threshold");
+            create_direct_link("adaptive_sampler.adaptiveness",             "adaptive_tile_renderer.adaptiveness");
             create_direct_link("adaptive_sampler.enable_diagnostics",       "adaptive_tile_renderer.enable_diagnostics");
 
             load_directly_linked_values(config);
@@ -583,9 +584,13 @@ namespace
             max_samples->setToolTip(m_params_metadata.get_path("adaptive_tile_renderer.max_samples.help"));
             sublayout->addRow("Max Samples:", max_samples);
 
-            QDoubleSpinBox* precision = create_double_input("adaptive_sampler.precision", 0.0, 20.0, 4, 0.0001);
-            precision->setToolTip(m_params_metadata.get_path("adaptive_tile_renderer.precision.help"));
-            sublayout->addRow("Precision:", precision);
+            QDoubleSpinBox* noise_threshold = create_double_input("adaptive_sampler.noise_threshold", 0.0, 1.0, 4, 0.001);
+            noise_threshold->setToolTip(m_params_metadata.get_path("adaptive_tile_renderer.noise_threshold.help"));
+            sublayout->addRow("Noise Threshold:", noise_threshold);
+
+            QDoubleSpinBox* adaptiveness = create_double_input("adaptive_sampler.adaptiveness", 0.0, 1.0, 1, 0.1);
+            adaptiveness->setToolTip(m_params_metadata.get_path("adaptive_tile_renderer.adaptiveness.help"));
+            sublayout->addRow("Adaptiveness", adaptiveness);
 
             QCheckBox* enable_diagnostics = create_checkbox("adaptive_sampler.enable_diagnostics", "Enable Diagnostic AOVs");
             enable_diagnostics->setToolTip(m_params_metadata.get_path("adaptive_tile_renderer.enable_diagnostics.help"));
