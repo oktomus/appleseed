@@ -468,6 +468,7 @@ set (foundation_meta_tests_sources
     foundation/meta/tests/test_noise.cpp
     foundation/meta/tests/test_objmeshfilereader.cpp
     foundation/meta/tests/test_objmeshfilewriter.cpp
+    foundation/meta/tests/test_ordering.cpp
     foundation/meta/tests/test_otherwise.cpp
     foundation/meta/tests/test_path.cpp
     foundation/meta/tests/test_permutation.cpp
