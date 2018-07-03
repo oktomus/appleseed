@@ -1802,6 +1802,7 @@ namespace
 
         void update() override
         {
+            update_diagnostic_option();
             update_adaptive_renderer();
         }
 
@@ -1812,18 +1813,59 @@ namespace
             {
                 Dictionary& root = i->get_parameters();
 
-                if (!root.dictionaries().exist("adaptive_pixel_renderer"))
-                    continue;
+                if (root.dictionaries().exist("adaptive_pixel_renderer"))
+                {
+                    Dictionary& gtr = root.dictionary("adaptive_pixel_renderer");
 
-                Dictionary& gtr = root.dictionary("adaptive_pixel_renderer");
+                    Dictionary upr;
+                    copy_if_exist(upr, "max_samples", gtr, "max_samples");
+                    copy_if_exist(upr, "min_samples", gtr, "min_samples");
+                    copy_if_exist(upr, "enable_diagnostics", gtr, "enable_diagnostics");
+                    root.insert("adaptive_tile_renderer", upr);
 
-                Dictionary upr;
-                copy_if_exist(upr, "max_samples", gtr, "max_samples");
-                copy_if_exist(upr, "min_samples", gtr, "min_samples");
-                copy_if_exist(upr, "enable_diagnostics", gtr, "enable_diagnostics");
-                root.insert("adaptive_tile_renderer", upr);
+                    root.dictionaries().remove("adaptive_pixel_renderer");
+                }
+            }
+        }
 
-                root.dictionaries().remove("adaptive_pixel_renderer");
+        void update_diagnostic_option()
+        {
+            for (each<ConfigurationContainer> i = m_project.configurations(); i; ++i)
+            {
+                Dictionary& root = i->get_parameters();
+
+                if (root.dictionaries().exist("uniform_pixel_renderer"))
+                {
+                    Dictionary& gtr = root.dictionary("uniform_pixel_renderer");
+
+                    if (gtr.strings().exist("enable_diagnostics"))
+                        gtr.strings().remove("enable_diagnostics");
+                }
+
+                if (root.dictionaries().exist("adaptive_pixel_renderer"))
+                {
+                    Dictionary& gtr = root.dictionary("adaptive_pixel_renderer");
+
+                    if (gtr.strings().exist("enable_diagnostics"))
+                        gtr.strings().remove("enable_diagnostics");
+                }
+            }
+
+            Frame* frame = m_project.get_frame();
+
+            if (frame == nullptr)
+                return;
+
+            ParamArray& frame_params = frame->get_parameters();
+
+            if (frame_params.strings().exist("save_extra_aovs"))
+            {
+                // The frame does not reference any camera: use the first camera.
+                frame_params.insert(
+                    "enable_diagnostic_aovs",
+                    frame_params.get<bool>("save_extra_aovs"));
+
+                frame_params.strings().remove("save_extra_aovs");
             }
         }
     };

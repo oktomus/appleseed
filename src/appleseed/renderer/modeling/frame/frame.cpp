@@ -105,7 +105,7 @@ struct Frame::Impl
     AABB2u                          m_crop_window;
     ParamArray                      m_render_info;
     DenoisingMode                   m_denoising_mode;
-    bool                            m_save_extra_aovs;
+    bool                            m_enable_diagnostic_aovs;
 
     // Child entities.
     AOVContainer                    m_aovs;
@@ -218,7 +218,7 @@ void Frame::print_settings()
         "  filter size                   %f\n"
         "  crop window                   (%s, %s)-(%s, %s)\n"
         "  denoising mode                %s\n"
-        "  save extra aovs               %s",
+        "  diagnostic aovs               %s",
         get_path().c_str(),
         camera_name ? camera_name : "none",
         pretty_uint(impl->m_frame_width).c_str(),
@@ -233,7 +233,7 @@ void Frame::print_settings()
         pretty_uint(impl->m_crop_window.max[1]).c_str(),
         impl->m_denoising_mode == DenoisingMode::Off ? "off" :
         impl->m_denoising_mode == DenoisingMode::WriteOutputs ? "write outputs" : "denoise",
-        impl->m_save_extra_aovs ? "on" : "off");
+        impl->m_enable_diagnostic_aovs ? "on" : "off");
 }
 
 AOVContainer& Frame::aovs() const
@@ -328,6 +328,11 @@ void Frame::set_crop_window(const AABB2u& crop_window)
 const AABB2u& Frame::get_crop_window() const
 {
     return impl->m_crop_window;
+}
+
+bool Frame::are_diagnostic_aovs_enabled() const
+{
+    return impl->m_enable_diagnostic_aovs;
 }
 
 void Frame::collect_asset_paths(StringArray& paths) const
@@ -738,7 +743,7 @@ bool Frame::write_aov_images(const char* file_path) const
             success = false;
     }
 
-    if (impl->m_save_extra_aovs)
+    if (impl->m_enable_diagnostic_aovs)
     {
         for (size_t i = 0, e = impl->m_extra_aovs.size(); i < e; ++i)
         {
@@ -850,7 +855,7 @@ void Frame::write_main_and_aov_images_to_multipart_exr(const char* file_path) co
             writer.append_part(aov_name.c_str(), image, image_attributes, aov->get_channel_count(), aov->get_channel_names());
     }
 
-    if (impl->m_save_extra_aovs)
+    if (impl->m_enable_diagnostic_aovs)
     {
         for (size_t i = 0, e = impl->m_extra_aovs.size(); i < e; ++i)
         {
@@ -997,7 +1002,7 @@ void Frame::extract_parameters()
     }
 
     // Retrieve save extra AOVs parameter
-    impl->m_save_extra_aovs = m_params.get_optional<bool>("save_extra_aovs", false);
+    impl->m_enable_diagnostic_aovs = m_params.get_optional<bool>("enable_diagnostic_aovs", false);
 }
 
 
@@ -1190,8 +1195,8 @@ DictionaryArray FrameFactory::get_input_metadata()
 
     metadata.push_back(
         Dictionary()
-            .insert("name", "save_extra_aovs")
-            .insert("label", "Save Extra AOVs")
+            .insert("name", "enable_diagnostic_aovs")
+            .insert("label", "Enable Diagnostic AOVs")
             .insert("type", "boolean")
             .insert("use", "optional")
             .insert("default", "false"));

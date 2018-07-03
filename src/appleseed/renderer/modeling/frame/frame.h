@@ -119,6 +119,9 @@ class APPLESEED_DLLSYMBOL Frame
     void set_crop_window(const foundation::AABB2u& crop_window);
     const foundation::AABB2u& get_crop_window() const;
 
+    // Check if extra aovs are enabled and saved.
+    bool are_diagnostic_aovs_enabled() const;
+
     // Expose asset file paths referenced by this entity to the outside.
     void collect_asset_paths(foundation::StringArray& paths) const override;
     void update_asset_paths(const foundation::StringDictionary& mappings) override;

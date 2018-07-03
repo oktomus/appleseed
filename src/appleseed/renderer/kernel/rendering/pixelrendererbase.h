@@ -67,8 +67,6 @@ class PixelRendererBase
         const size_t        thread_index,
         const ParamArray&   params);
 
-    bool are_diagnostics_enabled() const;
-
     // This method is called before a tile gets rendered.
     void on_tile_begin(
         const Frame&                frame,
@@ -83,12 +81,14 @@ class PixelRendererBase
 
   protected:
     void on_pixel_begin(
+        const Frame&                        frame,
         const foundation::Vector2i&         pi,
         const foundation::Vector2i&         pt,
         const foundation::AABB2i&           tile_bbox,
         AOVAccumulatorContainer&            aov_accumulators);
 
     void on_pixel_end(
+        const Frame&                        frame,
         const foundation::Vector2i&         pi,
         const foundation::Vector2i&         pt,
         const foundation::AABB2i&           tile_bbox,
@@ -97,33 +97,10 @@ class PixelRendererBase
     void signal_invalid_sample();
 
   private:
-    struct Parameters
-    {
-        const bool m_diagnostics;
-
-        explicit Parameters(const ParamArray& params)
-            : m_diagnostics(params.get_optional<bool>("enable_diagnostics", false))
-        {
-        }
-    };
-
     size_t                                  m_invalid_sample_count;
     size_t                                  m_invalid_pixel_count;
     size_t                                  m_invalid_sample_aov_index;
     std::unique_ptr<foundation::Tile>       m_invalid_sample_diagnostic;
-    const Parameters                        m_params;
-};
-
-
-//
-// Pixel renderer base factory.
-//
-
-class PixelRendererBaseFactory
-  : public IPixelRendererFactory
-{
-  public:
-    static foundation::Dictionary get_params_metadata();
 };
 
 }       // namespace renderer

@@ -113,12 +113,10 @@ namespace
                 "uniform pixel renderer settings:\n"
                 "  samples                       %s\n"
                 "  force antialiasing            %s\n"
-                "  decorrelate pixels            %s\n"
-                "  diagnostics                   %s",
+                "  decorrelate pixels            %s",
                 pretty_uint(m_params.m_samples).c_str(),
                 m_params.m_force_aa ? "on" : "off",
-                m_params.m_decorrelate ? "on" : "off",
-                are_diagnostics_enabled() ? "on" : "off");
+                m_params.m_decorrelate ? "on" : "off");
 
             m_sample_renderer->print_settings();
         }
@@ -136,7 +134,7 @@ namespace
         {
             const size_t aov_count = frame.aov_images().size();
 
-            on_pixel_begin(pi, pt, tile_bbox, aov_accumulators);
+            on_pixel_begin(frame, pi, pt, tile_bbox, aov_accumulators);
 
             if (m_params.m_decorrelate)
             {
@@ -250,7 +248,7 @@ namespace
                 }
             }
 
-            on_pixel_end(pi, pt, tile_bbox, aov_accumulators);
+            on_pixel_end(frame, pi, pt, tile_bbox, aov_accumulators);
         }
 
         StatisticsVector get_statistics() const override
@@ -324,7 +322,7 @@ IPixelRenderer* UniformPixelRendererFactory::create(
 
 Dictionary UniformPixelRendererFactory::get_params_metadata()
 {
-    Dictionary metadata = PixelRendererBaseFactory::get_params_metadata();
+    Dictionary metadata;
 
     metadata.dictionaries().insert(
         "samples",

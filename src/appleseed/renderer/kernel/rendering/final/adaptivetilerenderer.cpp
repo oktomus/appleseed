@@ -132,7 +132,7 @@ namespace
         {
             compute_tile_margins(frame, thread_index == 0);
 
-            if (true)
+            if (frame.are_diagnostic_aovs_enabled())
             {
                 m_variation_aov_index = frame.create_extra_aov_image("variation");
                 m_samples_aov_index = frame.create_extra_aov_image("samples");
@@ -391,6 +391,9 @@ namespace
                 if (pb.m_converged)
                     tile_converged_pixel += pb_pixel_count;
 
+                if (!frame.are_diagnostic_aovs_enabled())
+                    continue;
+
                 for (int y = pb_image_aabb.min.y; y <= pb_image_aabb.max.y; ++y)
                 {
                     for (int x = pb_image_aabb.min.x; x <= pb_image_aabb.max.x; ++x)
@@ -562,7 +565,7 @@ namespace
             Tile&                   tile,
             TileStack&              aov_tiles)
         {
-            if (true)
+            if (frame.are_diagnostic_aovs_enabled())
             {
                 // 5 channels required: 3 for block color ids, 1 for variation and 1 for sample amount.
                 m_diagnostics.reset(new Tile(
@@ -575,7 +578,7 @@ namespace
             Tile&                   tile,
             TileStack&              aov_tiles)
         {
-            if (true)
+            if (frame.are_diagnostic_aovs_enabled())
             {
                 const size_t width = tile.get_width();
                 const size_t height = tile.get_height();
@@ -840,7 +843,7 @@ ITileRenderer* AdaptiveTileRendererFactory::create(
 
 Dictionary AdaptiveTileRendererFactory::get_params_metadata()
 {
-    Dictionary metadata = PixelRendererBaseFactory::get_params_metadata();
+    Dictionary metadata;
 
     metadata.dictionaries().insert(
         "min_samples",

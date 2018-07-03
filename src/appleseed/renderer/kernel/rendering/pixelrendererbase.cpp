@@ -60,11 +60,10 @@ PixelRendererBase::PixelRendererBase(
     const Frame&        frame,
     const size_t        thread_index,
     const ParamArray&   params)
-  : m_params(params)
-  , m_invalid_pixel_count(0)
+  : m_invalid_pixel_count(0)
   , m_invalid_sample_aov_index(~size_t(0))
 {
-    if (m_params.m_diagnostics)
+    if (frame.are_diagnostic_aovs_enabled())
     {
         m_invalid_sample_aov_index = frame.create_extra_aov_image("invalid_samples");
 
@@ -75,11 +74,6 @@ PixelRendererBase::PixelRendererBase(
                 MaxAOVCount);
         }
     }
-}
-
-bool PixelRendererBase::are_diagnostics_enabled() const
-{
-    return m_params.m_diagnostics;
 }
 
 void PixelRendererBase::on_tile_begin(
@@ -138,6 +132,7 @@ void PixelRendererBase::on_tile_end(
 }
 
 void PixelRendererBase::on_pixel_begin(
+    const Frame&                frame,
     const Vector2i&             pi,
     const Vector2i&             pt,
     const AABB2i&               tile_bbox,
@@ -148,6 +143,7 @@ void PixelRendererBase::on_pixel_begin(
 }
 
 void PixelRendererBase::on_pixel_end(
+    const Frame&                frame,
     const Vector2i&             pi,
     const Vector2i&             pt,
     const AABB2i&               tile_bbox,
@@ -178,7 +174,7 @@ void PixelRendererBase::on_pixel_end(
         }
     }
 
-    if (m_params.m_diagnostics && tile_bbox.contains(pt))
+    if (frame.are_diagnostic_aovs_enabled() && tile_bbox.contains(pt))
     {
         m_invalid_sample_diagnostic->set_pixel(pt.x, pt.y,
             m_invalid_sample_count > 0 ? &InvalidSample : &CorrectSample);
@@ -188,26 +184,6 @@ void PixelRendererBase::on_pixel_end(
 void PixelRendererBase::signal_invalid_sample()
 {
     ++m_invalid_sample_count;
-}
-
-
-//
-// PixelRendererBaseFactory class implementation.
-//
-
-Dictionary PixelRendererBaseFactory::get_params_metadata()
-{
-    Dictionary metadata;
-
-    metadata.dictionaries().insert(
-        "enable_diagnostics",
-        Dictionary()
-            .insert("type", "bool")
-            .insert("default", "false")
-            .insert("label", "Enable Diagnostics")
-            .insert("help", "Enable pixel renderer diagnostics"));
-
-    return metadata;
 }
 
 }   // namespace renderer
