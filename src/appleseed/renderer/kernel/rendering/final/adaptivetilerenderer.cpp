@@ -40,7 +40,6 @@
 #include "renderer/kernel/rendering/pixelcontext.h"
 #include "renderer/kernel/rendering/pixelrendererbase.h"
 #include "renderer/kernel/rendering/shadingresultframebuffer.h"
-#include "renderer/kernel/rendering/final/variationtracker.h"
 #include "renderer/kernel/shading/shadingresult.h"
 #include "renderer/modeling/frame/frame.h"
 #include "renderer/utility/settingsparsing.h"
