@@ -134,20 +134,9 @@ namespace
 
             if (frame.are_diagnostic_aovs_enabled())
             {
-                m_variation_aov_index = frame.create_extra_aov_image("variation");
                 m_samples_aov_index = frame.create_extra_aov_image("samples");
-                m_block_coverage_aov_index = frame.create_extra_aov_image("block-coverage");
-                m_block_abs_error_aov_index = frame.create_extra_aov_image("block-abs-error");
-                m_accum_aov_index = frame.create_extra_aov_image("accumulation-buffer");
-                m_error_aov_index = frame.create_extra_aov_image("pixel-error");
 
-                if ((thread_index == 0) &&
-                    (m_variation_aov_index == ~size_t(0)
-                    || m_samples_aov_index == ~size_t(0)
-                    || m_block_coverage_aov_index == ~size_t(0)
-                    || m_accum_aov_index == ~size_t(0)
-                    || m_error_aov_index == ~size_t(0)
-                    || m_block_abs_error_aov_index == ~size_t(0)))
+                if ((thread_index == 0) && m_samples_aov_index == ~size_t(0))
                 {
                     RENDERER_LOG_WARNING(
                         "could not create some of the diagnostic aovs, maximum number of aovs (" FMT_SIZE_T ") reached.",
@@ -402,10 +391,9 @@ namespace
                         const Vector2i pt(x, y);
 
                         // Store diagnostics values in the diagnostics tile.
-                        Color<float, 11> values;
+                        Color<float, 1> values;
 
-                        values[0] = pb.m_block_error;
-                        values[1] =
+                        values[0] =
                             m_params.m_min_samples == m_params.m_max_samples
                             ? 1.0f
                             : fit(
@@ -413,26 +401,6 @@ namespace
                                     static_cast<float>(m_params.m_min_samples),
                                     static_cast<float>(m_params.m_max_samples),
                                     0.0f, 1.0f);
-
-                        Color3f pb_color = integer_to_color(pass_hash * tile_index + i + 1);
-                        values[2] = pb_color[0];
-                        values[3] = pb_color[1];
-                        values[4] = pb_color[2];
-                        values[5] = pb.m_max_abs_error;
-
-                        const float* main_ptr = framebuffer->pixel(x, y);
-                        const float* second_ptr = second_framebuffer->pixel(x, y);
-                        const float second_weight = *second_ptr++;
-                        const float second_rcp_weight = second_weight == 0.0f ? 0.0f : 1.0f / second_weight;
-                        Color4f second_color(second_ptr[0], second_ptr[1], second_ptr[2], second_ptr[3]);
-                        second_color *= second_rcp_weight;
-
-                        values[6] = second_color.r;
-                        values[7] = second_color.g;
-                        values[8] = second_color.b;
-                        values[9] = second_color.a;
-
-                        values[10] = FilteredTile::compute_weighted_pixel_variance(main_ptr, second_ptr, VarianceComputeConvertBlockToSRGB);
 
                         m_diagnostics->set_pixel(pt.x, pt.y, values);
                     }
@@ -545,12 +513,7 @@ namespace
 
         const Parameters                        m_params;
         unique_ptr<Tile>                        m_diagnostics;
-        size_t                                  m_variation_aov_index;
         size_t                                  m_samples_aov_index;
-        size_t                                  m_block_coverage_aov_index;
-        size_t                                  m_block_abs_error_aov_index;
-        size_t                                  m_accum_aov_index;
-        size_t                                  m_error_aov_index;
 
         // Members used for statistics.
         Population<size_t>                      m_block_amount;
@@ -567,9 +530,8 @@ namespace
         {
             if (frame.are_diagnostic_aovs_enabled())
             {
-                // 5 channels required: 3 for block color ids, 1 for variation and 1 for sample amount.
                 m_diagnostics.reset(new Tile(
-                    tile.get_width(), tile.get_height(), 11, PixelFormatFloat));
+                    tile.get_width(), tile.get_height(), 1, PixelFormatFloat));
             }
         }
 
@@ -587,26 +549,11 @@ namespace
                 {
                     for (size_t x = 0; x < width; ++x)
                     {
-                        Color<float, 11> values;
+                        Color<float, 1> values;
                         m_diagnostics->get_pixel(x, y, values);
 
-                        if (m_variation_aov_index != ~size_t(0))
-                            aov_tiles.set_pixel(x, y, m_variation_aov_index, colorize_variation(values[0]));
-
                         if (m_samples_aov_index != ~size_t(0))
-                            aov_tiles.set_pixel(x, y, m_samples_aov_index, colorize_samples(values[1]));
-
-                        if (m_block_coverage_aov_index != ~size_t(0))
-                            aov_tiles.set_pixel(x, y, m_block_coverage_aov_index, Color4f(values[2], values[3], values[4], 1.0f));
-
-                        if (m_block_abs_error_aov_index != ~size_t(0))
-                            aov_tiles.set_pixel(x, y, m_block_abs_error_aov_index, Color4f(values[5], 0.0f, 0.0f, 1.0f));
-
-                        if (m_accum_aov_index != ~size_t(0))
-                            aov_tiles.set_pixel(x, y, m_accum_aov_index, Color4f(values[6], values[7], values[8], values[9]));
-
-                        if (m_error_aov_index != ~size_t(0))
-                            aov_tiles.set_pixel(x, y, m_error_aov_index, Color4f(values[10], values[10], 0.0f, 1.0f));
+                            aov_tiles.set_pixel(x, y, m_samples_aov_index, colorize_samples(values[0]));
                     }
                 }
             }
