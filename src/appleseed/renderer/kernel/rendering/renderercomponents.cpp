@@ -44,6 +44,7 @@
 #include "renderer/kernel/rendering/ephemeralshadingresultframebufferfactory.h"
 #include "renderer/kernel/rendering/final/adaptivetilerenderer.h"
 #include "renderer/kernel/rendering/final/uniformpixelrenderer.h"
+#include "renderer/kernel/rendering/final/adaptivepixelrenderer.h"
 #include "renderer/kernel/rendering/generic/genericframerenderer.h"
 #include "renderer/kernel/rendering/generic/genericsamplegenerator.h"
 #include "renderer/kernel/rendering/generic/genericsamplerenderer.h"
@@ -350,6 +351,24 @@ bool RendererComponents::create_pixel_renderer_factory()
     }
     else if (name == "adaptive")
     {
+        if (m_sample_renderer_factory.get() == nullptr)
+        {
+            RENDERER_LOG_ERROR("cannot use the adaptive pixel renderer without a sample renderer.");
+            return false;
+        }
+
+        ParamArray params = get_child_and_inherit_globals(m_params, "adaptive_pixel_renderer");
+        copy_param(params, m_params, "passes");
+        m_pixel_renderer_factory.reset(
+            new AdaptivePixelRendererFactory(
+                m_frame,
+                m_sample_renderer_factory.get(),
+                params));
+
+        return true;
+    }
+    else if (name == "adaptive_tile")
+    {
         return true;
     }
     else
@@ -395,7 +414,7 @@ bool RendererComponents::create_tile_renderer_factory()
     const string name = m_params.get_optional<string>("tile_renderer", "");
     const string pixel_renderer_name = m_params.get_optional<string>("pixel_renderer", "");
 
-    if ((name.empty() || name == "generic") && pixel_renderer_name == "adaptive")
+    if (name == "generic" && pixel_renderer_name == "adaptive_tile")
     {
         if (m_sample_renderer_factory.get() == nullptr)
         {
@@ -418,7 +437,7 @@ bool RendererComponents::create_tile_renderer_factory()
 
         return true;
     }
-    if (name == "generic")
+    else if (name == "generic")
     {
         if (m_pixel_renderer_factory.get() == nullptr)
         {

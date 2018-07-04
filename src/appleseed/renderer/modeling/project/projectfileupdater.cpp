@@ -1803,30 +1803,9 @@ namespace
         void update() override
         {
             update_diagnostic_option();
-            update_adaptive_renderer();
         }
 
       private:
-        void update_adaptive_renderer()
-        {
-            for (each<ConfigurationContainer> i = m_project.configurations(); i; ++i)
-            {
-                Dictionary& root = i->get_parameters();
-
-                if (root.dictionaries().exist("adaptive_pixel_renderer"))
-                {
-                    Dictionary& gtr = root.dictionary("adaptive_pixel_renderer");
-
-                    Dictionary upr;
-                    copy_if_exist(upr, "max_samples", gtr, "max_samples");
-                    copy_if_exist(upr, "min_samples", gtr, "min_samples");
-                    copy_if_exist(upr, "enable_diagnostics", gtr, "enable_diagnostics");
-                    root.insert("adaptive_tile_renderer", upr);
-
-                    root.dictionaries().remove("adaptive_pixel_renderer");
-                }
-            }
-        }
 
         void update_diagnostic_option()
         {
