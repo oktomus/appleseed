@@ -636,71 +636,91 @@ namespace
                         BREAKPOINT();
 
 #endif
+                    const size_t pixel_index = pi.y * frame_width + pi.x;
+                    const size_t instance = hash_uint32(static_cast<uint32>(pass_hash + pixel_index * (pb.m_spp + 1)));
 
                     // Render this pixel.
-                    {
-                        const size_t pixel_index = pi.y * frame_width + pi.x;
-                        const size_t instance = hash_uint32(static_cast<uint32>(pass_hash + pixel_index * (pb.m_spp + 1)));
-
-                        SamplingContext::RNGType rng(pass_hash, instance);
-                        SamplingContext sampling_context(
-                            rng,
-                            m_params.m_sampling_mode,
-                            2,                          // number of dimensions
-                            0,                          // number of samples -- unknown
-                            instance);                  // initial instance number
-
-                        bool second = false;
-
-                        for (size_t j = 0; j < batch_size; ++j)
-                        {
-                            // Generate a uniform sample in [0,1)^2.
-                            const Vector2d s = sampling_context.next2<Vector2d>();
-
-                            // Compute the sample position in NDC.
-                            const Vector2d sample_position = frame.get_sample_position(pi.x + s.x, pi.y + s.y);
-
-                            // Create a pixel context that identifies the pixel and sample currently being rendered.
-                            const PixelContext pixel_context(pi, sample_position);
-
-                            // Render the sample.
-                            ShadingResult shading_result(aov_count);
-                            SamplingContext child_sampling_context(sampling_context);
-                            m_sample_renderer->render_sample(
-                                child_sampling_context,
-                                pixel_context,
-                                sample_position,
-                                m_aov_accumulators,
-                                shading_result);
-
-                            // Ignore invalid samples.
-                            if (!shading_result.is_valid())
-                            {
-                                //signal_invalid_sample();
-                                continue;
-                            }
-
-                            // Merge the sample into the scratch framebuffer.
-                            framebuffer->add(
-                                static_cast<float>(pt.x + s.x),
-                                static_cast<float>(pt.y + s.y),
-                                shading_result);
-
-                            if (second)
-                            {
-                                second_framebuffer->add(
-                                        static_cast<float>(pt.x + s.x),
-                                        static_cast<float>(pt.y + s.y),
-                                        shading_result);
-                            }
-
-                            second = !second;
-                        }
-                    }
+                    sample_pixel(
+                        frame,
+                        pi,
+                        pt,
+                        framebuffer,
+                        second_framebuffer,
+                        pass_hash,
+                        instance,
+                        batch_size,
+                        aov_count);
                 }
             }
 
             pb.m_spp += batch_size;
+        }
+
+        void sample_pixel(
+            const Frame&                        frame,
+            const Vector2i&                     pi,
+            const Vector2i&                     pt,
+            ShadingResultFrameBuffer*           framebuffer,
+            ShadingResultFrameBuffer*           second_framebuffer,
+            const size_t                        pass_hash,
+            const size_t                        instance,
+            const size_t                        batch_size,
+            const size_t                        aov_count)
+        {
+            SamplingContext::RNGType rng(pass_hash, instance);
+            SamplingContext sampling_context(
+                rng,
+                m_params.m_sampling_mode,
+                2,                          // number of dimensions
+                0,                          // number of samples -- unknown
+                instance);                  // initial instance number
+
+            bool second = false;
+
+            for (size_t j = 0; j < batch_size; ++j)
+            {
+                // Generate a uniform sample in [0,1)^2.
+                const Vector2d s = sampling_context.next2<Vector2d>();
+
+                // Compute the sample position in NDC.
+                const Vector2d sample_position = frame.get_sample_position(pi.x + s.x, pi.y + s.y);
+
+                // Create a pixel context that identifies the pixel and sample currently being rendered.
+                const PixelContext pixel_context(pi, sample_position);
+
+                // Render the sample.
+                ShadingResult shading_result(aov_count);
+                SamplingContext child_sampling_context(sampling_context);
+                m_sample_renderer->render_sample(
+                    child_sampling_context,
+                    pixel_context,
+                    sample_position,
+                    m_aov_accumulators,
+                    shading_result);
+
+                // Ignore invalid samples.
+                if (!shading_result.is_valid())
+                {
+                    //signal_invalid_sample();
+                    continue;
+                }
+
+                // Merge the sample into the scratch framebuffer.
+                framebuffer->add(
+                    static_cast<float>(pt.x + s.x),
+                    static_cast<float>(pt.y + s.y),
+                    shading_result);
+
+                if (second)
+                {
+                    second_framebuffer->add(
+                            static_cast<float>(pt.x + s.x),
+                            static_cast<float>(pt.y + s.y),
+                            shading_result);
+                }
+
+                second = !second;
+            }
         }
 
         // Split the given block in two.
