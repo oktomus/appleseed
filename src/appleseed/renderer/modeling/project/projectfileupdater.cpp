@@ -1803,10 +1803,12 @@ namespace
         void update() override
         {
             update_diagnostic_option();
+            update_pixel_renderer_option();
         }
 
       private:
 
+        // Merge frame::save_extra_aovs and PixelRenderer::enable_diagnostics.
         void update_diagnostic_option()
         {
             for (each<ConfigurationContainer> i = m_project.configurations(); i; ++i)
@@ -1845,6 +1847,26 @@ namespace
                     frame_params.get<bool>("save_extra_aovs"));
 
                 frame_params.strings().remove("save_extra_aovs");
+            }
+        }
+
+        // Rename pixel_renderer to sampling_method.
+        void update_pixel_renderer_option()
+        {
+            for (each<ConfigurationContainer> i = m_project.configurations(); i; ++i)
+            {
+                Dictionary& root = i->get_parameters();
+
+                if (!root.dictionaries().exist("final"))
+                    continue;
+
+                Dictionary& gtr = root.dictionary("final");
+
+                if (gtr.strings().exist("pixel_renderer"))
+                {
+                    gtr.insert("sampling_method", gtr.strings().get<string>("pixel_renderer"));
+                    gtr.strings().remove("pixel_renderer");
+                }
             }
         }
     };

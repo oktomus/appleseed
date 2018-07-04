@@ -258,7 +258,7 @@ auto_release_ptr<Configuration> BaseConfigurationFactory::create_base_final()
     parameters.insert("frame_renderer", "generic");
     parameters.insert("tile_renderer", "generic");
 
-    parameters.insert("pixel_renderer", "uniform");
+    parameters.insert("sampling_method", "uniform");
     parameters.dictionaries().insert(
         "uniform_pixel_renderer",
         ParamArray()
