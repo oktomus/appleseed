@@ -135,8 +135,11 @@ namespace
             if (frame.are_diagnostic_aovs_enabled())
             {
                 m_samples_aov_index = frame.create_extra_aov_image("samples");
+                m_noise_aov_index = frame.create_extra_aov_image("noise");
 
-                if ((thread_index == 0) && m_samples_aov_index == ~size_t(0))
+                if ((thread_index == 0) &&
+                    (m_samples_aov_index == ~size_t(0)
+                    || m_noise_aov_index == ~size_t(0)))
                 {
                     RENDERER_LOG_WARNING(
                         "could not create some of the diagnostic aovs, maximum number of aovs (" FMT_SIZE_T ") reached.",
@@ -366,6 +369,21 @@ namespace
             size_t tile_converged_pixel = 0;
 
             // Post rendering.
+
+            // Look for the min and max error values.
+            float min_block_error = std::numeric_limits<float>::max(),
+                  max_block_error = std::numeric_limits<float>::lowest();
+
+            if (frame.are_diagnostic_aovs_enabled())
+            {
+                for (size_t i = 0, n = finished_blocks.size(); i < n; ++i)
+                {
+                    const PixelBlock& pb = finished_blocks[i];
+                    min_block_error = min(min_block_error, pb.m_block_error);
+                    max_block_error = max(max_block_error, pb.m_block_error);
+                }
+            }
+
             for (size_t i = 0, n = finished_blocks.size(); i < n; ++i)
             {
                 const PixelBlock& pb = finished_blocks[i];
@@ -391,7 +409,7 @@ namespace
                         const Vector2i pt(x, y);
 
                         // Store diagnostics values in the diagnostics tile.
-                        Color<float, 1> values;
+                        Color<float, 2> values;
 
                         values[0] =
                             m_params.m_min_samples == m_params.m_max_samples
@@ -401,6 +419,12 @@ namespace
                                     static_cast<float>(m_params.m_min_samples),
                                     static_cast<float>(m_params.m_max_samples),
                                     0.0f, 1.0f);
+
+                        values[1] = fit(
+                            static_cast<float>(pb.m_block_error),
+                            static_cast<float>(min_block_error),
+                            static_cast<float>(max_block_error),
+                            0.0f, 1.0f);
 
                         m_diagnostics->set_pixel(pt.x, pt.y, values);
                     }
@@ -514,6 +538,7 @@ namespace
         const Parameters                        m_params;
         unique_ptr<Tile>                        m_diagnostics;
         size_t                                  m_samples_aov_index;
+        size_t                                  m_noise_aov_index;
 
         // Members used for statistics.
         Population<size_t>                      m_block_amount;
@@ -531,7 +556,7 @@ namespace
             if (frame.are_diagnostic_aovs_enabled())
             {
                 m_diagnostics.reset(new Tile(
-                    tile.get_width(), tile.get_height(), 1, PixelFormatFloat));
+                    tile.get_width(), tile.get_height(), 2, PixelFormatFloat));
             }
         }
 
@@ -549,11 +574,14 @@ namespace
                 {
                     for (size_t x = 0; x < width; ++x)
                     {
-                        Color<float, 1> values;
+                        Color<float, 2> values;
                         m_diagnostics->get_pixel(x, y, values);
 
                         if (m_samples_aov_index != ~size_t(0))
                             aov_tiles.set_pixel(x, y, m_samples_aov_index, colorize_samples(values[0]));
+
+                        if (m_noise_aov_index != ~size_t(0))
+                            aov_tiles.set_pixel(x, y, m_noise_aov_index, colorize_noise(values[1]));
                     }
                 }
             }
@@ -763,14 +791,16 @@ namespace
 
         static Color4f colorize_samples(const float value)
         {
-            static const Color4f Black(0.0f, 0.0f, 0.0f, 1.0f);
-            static const Color4f White(1.0f, 1.0f, 1.0f, 1.0f);
-            return lerp(Black, White, saturate(value));
+            static const Color4f Blue(0.0f, 0.0f, 1.0f, 1.0f);
+            static const Color4f Orange(1.0f, 0.6f, 0.0f, 1.0f);
+            return lerp(Blue, Orange, saturate(value));
         }
 
-        static Color4f colorize_variation(const float value)
+        static Color4f colorize_noise(const float value)
         {
-            return Color4f(0.0f, value, 0.0f, 1.0f);
+            static const Color4f Green(0.0f, 1.0f, 0.0f, 1.0f);
+            static const Color4f Red(1.0f, 0.0f, 0.0f, 1.0f);
+            return lerp(Green, Red, saturate(value));
         }
     };
 }
