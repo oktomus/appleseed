@@ -90,11 +90,11 @@ namespace
 {
 
     // Minimum allowed size for a block of pixel.
-    const size_t BlockMinAllowedSize = 2;
+    const size_t BlockMinAllowedSize = 8;
     // Minimum allowed size for a block of pixel before splitting.
     const size_t BlockSplittingThreshold = BlockMinAllowedSize * 2;
     // Option to enable sRGB conversion when computing variance.
-    const bool VarianceComputeConvertBlockToSRGB = false;
+    const bool VarianceComputeConvertBlockToSRGB = true;
     // Maximum deviation allowed for a converged block.
     const float MaximumConvergedBlockDeviation = 0.5f;
     // Threshold used to warn the user if blocks doesn't converge.
@@ -316,6 +316,7 @@ namespace
                     // Evaluate block's variance.
                     FilteredTile::compute_tile_variance(
                         block_image_bb,
+                        frame.get_crop_window(),
                         framebuffer,
                         second_framebuffer,
                         &(pb.m_block_error),
@@ -637,7 +638,8 @@ namespace
 
 #endif
                     const size_t pixel_index = pi.y * frame_width + pi.x;
-                    const size_t instance = hash_uint32(static_cast<uint32>(pass_hash + pixel_index * (pb.m_spp + 1)));
+                    const size_t instance = hash_uint32(static_cast<uint32>(pass_hash + pixel_index +
+                        (pb.m_spp * frame_width * frame.image().properties().m_canvas_height)));
 
                     // Render this pixel.
                     sample_pixel(

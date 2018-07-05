@@ -206,6 +206,7 @@ float FilteredTile::compute_weighted_pixel_variance(
 
 void FilteredTile::compute_tile_variance(
     const AABB2u&       bb,
+    const AABB2u&       image,
     FilteredTile*       main,
     FilteredTile*       second,
     float*              block_error,
@@ -224,7 +225,7 @@ void FilteredTile::compute_tile_variance(
           max_perror = std::numeric_limits<float>::lowest();
 
     size_t pixel_count = bb.volume();
-    size_t img_pixel_count = main->get_crop_window().volume();
+    size_t img_pixel_count = image.volume();
 
     // Loop over block pixels.
     for (int y = bb.min.y; y <= bb.max.y; ++y)

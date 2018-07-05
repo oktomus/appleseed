@@ -151,6 +151,7 @@ class FilteredTile
     // If `convert_to_srgb` is true, pixels are converted to sRGB before computing the variance.
     static void compute_tile_variance(
         const AABB2u&       bb,
+        const AABB2u&       image,
         FilteredTile*       main,
         FilteredTile*       second,
         float*              block_error,
