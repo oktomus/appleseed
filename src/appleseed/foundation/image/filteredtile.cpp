@@ -170,17 +170,17 @@ float FilteredTile::compute_weighted_pixel_variance(
     const float*        second)
 {
     // Get weights.
-    const float main_weight = *main++;
-    const float main_rcp_weight = main_weight == 0.0f ? 0.0f : 1.0f / main_weight;
-    const float second_weight = *second++;
-    const float second_rcp_weight = second_weight == 0.0f ? 0.0f : 1.0f / second_weight;
+    float main_weight = *main++;
+    main_weight = main_weight == 0.0f ? 0.0f : 1.0f / main_weight;
+    float second_weight = *second++;
+    second_weight = second_weight == 0.0f ? 0.0f : 1.0f / second_weight;
 
     // Get colors and assign weights.
     Color4f main_color(abs(main[0]), abs(main[1]), abs(main[2]), abs(main[3]));
-    main_color *= main_rcp_weight;
+    main_color *= main_weight;
 
     Color4f second_color(abs(second[0]), abs(second[1]), abs(second[2]), abs(second[3]));
-    second_color *= second_rcp_weight;
+    second_color *= second_weight;
 
     // Compute variance.
     return (
@@ -202,8 +202,6 @@ float FilteredTile::compute_tile_variance(
     assert(main->get_crop_window().contains(bb.max));
     assert(bb.min.y >= 0 && bb.max.y <= main->get_height());
     assert(bb.min.x >= 0 && bb.max.x <= main->get_width());
-
-    size_t pixel_count = bb.volume();
 
     // Loop over block pixels.
     for (int y = bb.min.y; y <= bb.max.y; ++y)
