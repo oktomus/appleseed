@@ -140,23 +140,16 @@ class FilteredTile
     // Compute the variance of a weighted pixel given the value of the same pixel with 2 different samples count.
     // The first given pixel `main` contains N samples.
     // The second given pixel `second` contains N/2 samples (samples included in `second` are also in `main`).
-    // If `convert_to_srgb` is true, pixels are converted to sRGB before computing the variance.
     static float compute_weighted_pixel_variance(
         const float*        main,
-        const float*        second,
-        const bool          convert_to_srgb);
+        const float*        second);
 
     // Compute the variance of the tile `second` for pixels in the bouding box `bb`.
     // A second tile `second` is used which contains half of the samples of `main`.
-    // If `convert_to_srgb` is true, pixels are converted to sRGB before computing the variance.
-    static void compute_tile_variance(
+    static float compute_tile_variance(
         const AABB2u&       bb,
-        const AABB2u&       image,
         FilteredTile*       main,
-        FilteredTile*       second,
-        float*              block_error,
-        float*              max_abs_error,
-        const bool          convert_to_srgb = false);
+        FilteredTile*       second);
 
   protected:
     const AABB2u            m_crop_window;

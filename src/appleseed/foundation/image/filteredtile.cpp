@@ -167,8 +167,7 @@ void FilteredTile::atomic_add(
 
 float FilteredTile::compute_weighted_pixel_variance(
     const float*        main,
-    const float*        second,
-    const bool          convert_to_srgb)
+    const float*        second)
 {
     // Get weights.
     const float main_weight = *main++;
@@ -183,19 +182,6 @@ float FilteredTile::compute_weighted_pixel_variance(
     Color4f second_color(abs(second[0]), abs(second[1]), abs(second[2]), abs(second[3]));
     second_color *= second_rcp_weight;
 
-    if (convert_to_srgb)
-    {
-        main_color.unpremultiply();
-        main_color.rgb() = fast_linear_rgb_to_srgb(main_color.rgb());
-        main_color = saturate(main_color);
-        main_color.premultiply();
-
-        second_color.unpremultiply();
-        second_color.rgb() = fast_linear_rgb_to_srgb(second_color.rgb());
-        second_color = saturate(second_color);
-        second_color.premultiply();
-    }
-
     // Compute variance.
     return (
         abs(main_color.r - second_color.r)
@@ -204,16 +190,12 @@ float FilteredTile::compute_weighted_pixel_variance(
        ) / fast_sqrt(main_color.r + main_color.g + main_color.b);
 }
 
-void FilteredTile::compute_tile_variance(
+float FilteredTile::compute_tile_variance(
     const AABB2u&       bb,
-    const AABB2u&       image,
     FilteredTile*       main,
-    FilteredTile*       second,
-    float*              block_error,
-    float*              max_abs_error,
-    const bool          convert_to_srgb)
+    FilteredTile*       second)
 {
-    double error = 0.0;
+    float error = 0.0;
 
     assert(main->get_crop_window() == second->get_crop_window());
     assert(main->get_crop_window().contains(bb.min));
@@ -221,11 +203,7 @@ void FilteredTile::compute_tile_variance(
     assert(bb.min.y >= 0 && bb.max.y <= main->get_height());
     assert(bb.min.x >= 0 && bb.max.x <= main->get_width());
 
-    float min_perror = std::numeric_limits<float>::max(),
-          max_perror = std::numeric_limits<float>::lowest();
-
     size_t pixel_count = bb.volume();
-    size_t img_pixel_count = image.volume();
 
     // Loop over block pixels.
     for (int y = bb.min.y; y <= bb.max.y; ++y)
@@ -235,23 +213,11 @@ void FilteredTile::compute_tile_variance(
             const float* main_ptr = main->pixel(x, y);
             const float* second_ptr = second->pixel(x, y);
 
-            const float perror = compute_weighted_pixel_variance(main_ptr, second_ptr, convert_to_srgb);
-
-            if (perror > max_perror)
-                max_perror = perror;
-            else if (perror < min_perror)
-                min_perror = perror;
-
-            error += perror;
+            error += compute_weighted_pixel_variance(main_ptr, second_ptr);
         }
     }
 
-    // Compute scale factor as the block area over the image area.
-    const float scale_factor = fast_sqrt(static_cast<double>(pixel_count) / static_cast<double>(img_pixel_count))
-        / static_cast<double>(pixel_count);
-
-    *block_error = error * scale_factor;
-    *max_abs_error = max(abs(error * scale_factor - max_perror), abs(error * scale_factor - min_perror));
+    return error;
 }
 
 }   // namespace foundation

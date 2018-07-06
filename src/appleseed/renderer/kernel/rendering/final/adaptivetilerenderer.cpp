@@ -90,15 +90,11 @@ namespace
 {
 
     // Minimum allowed size for a block of pixel.
-    const size_t BlockMinAllowedSize = 8;
+    const size_t BlockMinAllowedSize = 4;
     // Minimum allowed size for a block of pixel before splitting.
     const size_t BlockSplittingThreshold = BlockMinAllowedSize * 2;
-    // Option to enable sRGB conversion when computing variance.
-    const bool VarianceComputeConvertBlockToSRGB = true;
-    // Maximum deviation allowed for a converged block.
-    const float MaximumConvergedBlockDeviation = 0.5f;
     // Threshold used to warn the user if blocks doesn't converge.
-    const int BlockConvergenceWarningThreshold = 50;
+    const int BlockConvergenceWarningThreshold = 70;
 
     //
     // Adaptive tile renderer.
@@ -135,11 +131,8 @@ namespace
             if (frame.are_diagnostic_aovs_enabled())
             {
                 m_samples_aov_index = frame.create_extra_aov_image("samples");
-                m_noise_aov_index = frame.create_extra_aov_image("noise");
 
-                if ((thread_index == 0) &&
-                    (m_samples_aov_index == ~size_t(0)
-                    || m_noise_aov_index == ~size_t(0)))
+                if ((thread_index == 0) && m_samples_aov_index == ~size_t(0))
                 {
                     RENDERER_LOG_WARNING(
                         "could not create some of the diagnostic aovs, maximum number of aovs (" FMT_SIZE_T ") reached.",
@@ -317,20 +310,13 @@ namespace
                     const AABB2u& block_image_bb = AABB2i::intersect(framebuffer->get_crop_window(), pb.m_surface);
 
                     // Evaluate block's variance.
-                    FilteredTile::compute_tile_variance(
+                    pb.m_block_error = FilteredTile::compute_tile_variance(
                         block_image_bb,
-                        frame.get_crop_window(),
                         framebuffer,
-                        second_framebuffer,
-                        &(pb.m_block_error),
-                        &(pb.m_max_abs_error),
-                        VarianceComputeConvertBlockToSRGB);
-
-                    pb.m_max_abs_error *= block_image_bb.volume();
+                        second_framebuffer);
 
                     // Decide if the blocks needs to be splitted, sampled and if it has converged.
                     if (pb.m_block_error <= m_params.m_noise_threshold)
-                        //&& pb.m_max_abs_error < MaximumConvergedBlockDeviation)
                     {
                         pb.m_converged = true;
                         finished_blocks.push_back(pb);
@@ -409,7 +395,7 @@ namespace
                         const Vector2i pt(x, y);
 
                         // Store diagnostics values in the diagnostics tile.
-                        Color<float, 2> values;
+                        Color<float, 1> values;
 
                         values[0] =
                             m_params.m_min_samples == m_params.m_max_samples
@@ -419,12 +405,6 @@ namespace
                                     static_cast<float>(m_params.m_min_samples),
                                     static_cast<float>(m_params.m_max_samples),
                                     0.0f, 1.0f);
-
-                        values[1] = fit(
-                            static_cast<float>(pb.m_block_error),
-                            static_cast<float>(min_block_error),
-                            static_cast<float>(max_block_error),
-                            0.0f, 1.0f);
 
                         m_diagnostics->set_pixel(pt.x, pt.y, values);
                     }
@@ -538,7 +518,6 @@ namespace
         const Parameters                        m_params;
         unique_ptr<Tile>                        m_diagnostics;
         size_t                                  m_samples_aov_index;
-        size_t                                  m_noise_aov_index;
 
         // Members used for statistics.
         Population<size_t>                      m_block_amount;
@@ -556,7 +535,7 @@ namespace
             if (frame.are_diagnostic_aovs_enabled())
             {
                 m_diagnostics.reset(new Tile(
-                    tile.get_width(), tile.get_height(), 2, PixelFormatFloat));
+                    tile.get_width(), tile.get_height(), 1, PixelFormatFloat));
             }
         }
 
@@ -574,14 +553,11 @@ namespace
                 {
                     for (size_t x = 0; x < width; ++x)
                     {
-                        Color<float, 2> values;
+                        Color<float, 1> values;
                         m_diagnostics->get_pixel(x, y, values);
 
                         if (m_samples_aov_index != ~size_t(0))
                             aov_tiles.set_pixel(x, y, m_samples_aov_index, colorize_samples(values[0]));
-
-                        if (m_noise_aov_index != ~size_t(0))
-                            aov_tiles.set_pixel(x, y, m_noise_aov_index, colorize_noise(values[1]));
                     }
                 }
             }
@@ -598,7 +574,6 @@ namespace
             size_t                              m_spp;
             // Variance of the pixel block.
             float                               m_block_error;
-            float                               m_max_abs_error;
             bool                                m_converged;
 
             enum Axis
@@ -614,7 +589,6 @@ namespace
               : m_surface(surface)
               , m_spp(0)
               , m_block_error(0)
-              , m_max_abs_error(0)
               , m_converged(false)
             {
                 assert(m_surface.is_valid());
@@ -794,13 +768,6 @@ namespace
             static const Color4f Blue(0.0f, 0.0f, 1.0f, 1.0f);
             static const Color4f Orange(1.0f, 0.6f, 0.0f, 1.0f);
             return lerp(Blue, Orange, saturate(value));
-        }
-
-        static Color4f colorize_noise(const float value)
-        {
-            static const Color4f Green(0.0f, 1.0f, 0.0f, 1.0f);
-            static const Color4f Red(1.0f, 0.0f, 0.0f, 1.0f);
-            return lerp(Green, Red, saturate(value));
         }
     };
 }
