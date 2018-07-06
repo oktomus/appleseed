@@ -91,6 +91,8 @@ namespace
 
     // Minimum allowed size for a block of pixel.
     const size_t BlockMinAllowedSize = 4;
+    // Maximum allowed size for a block of pixel. A low value may introduce artifacts.
+    const size_t BlockMaxAllowedSize = 40;
     // Minimum allowed size for a block of pixel before splitting.
     const size_t BlockSplittingThreshold = BlockMinAllowedSize * 2;
     // Threshold used to warn the user if blocks doesn't converge.
@@ -241,8 +243,43 @@ namespace
             const size_t pixel_count = framebuffer->get_width() * framebuffer->get_height();
 
             // Blocks rendering.
-            deque<PixelBlock> rendering_blocks(1, PixelBlock(padded_tile_bbox));
+            deque<PixelBlock> initial_blocks(1, PixelBlock(padded_tile_bbox));
+            deque<PixelBlock> rendering_blocks;
             vector<PixelBlock> finished_blocks;
+
+            // Initially split blocks so that no block is larger than `BlockMaxAllowedSize`.
+            while (initial_blocks.size() > 0)
+            {
+                PixelBlock& pb = initial_blocks.front();
+                initial_blocks.pop_front();
+
+                const AABB2u& block_image_bb = AABB2i::intersect(framebuffer->get_crop_window(), pb.m_surface);
+
+                if (block_image_bb.extent(0) <= BlockMaxAllowedSize
+                    || block_image_bb.extent(1) <= BlockMaxAllowedSize)
+                {
+                    rendering_blocks.push_front(pb);
+                    continue;
+                }
+
+                // Split the block if it's too big.
+                if (pb.m_main_axis == PixelBlock::Axis::HORIZONTAL_X
+                        && block_image_bb.extent(0) >= BlockSplittingThreshold)
+                {
+                    split_pixel_block(
+                        pb,
+                        initial_blocks,
+                        block_image_bb.min.x + static_cast<int>(block_image_bb.extent(0) * 0.5f - 0.5f));
+                }
+                else if (pb.m_main_axis == PixelBlock::Axis::VERTICAL_Y
+                        && block_image_bb.extent(1) >= BlockSplittingThreshold)
+                {
+                    split_pixel_block(
+                        pb,
+                        initial_blocks,
+                        block_image_bb.min.y + static_cast<int>(block_image_bb.extent(1) * 0.5f - 0.5f));
+                }
+            }
 
             // First uniform pass based on adaptiveness setting.
             if (m_params.m_adaptiveness < 1.0f)
@@ -511,7 +548,7 @@ namespace
               , m_noise_threshold(params.get_required<float>("noise_threshold", 0.03f))
               , m_adaptiveness(params.get_optional<float>("adaptiveness", 0.9f))
             {
-                m_splitting_threshold = m_noise_threshold * 256.0f;
+                m_splitting_threshold = m_noise_threshold * 128.0f;
             }
         };
 
