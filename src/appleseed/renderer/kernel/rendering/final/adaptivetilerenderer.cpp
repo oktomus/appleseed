@@ -421,7 +421,6 @@ namespace
                 // Update statistics.
                 m_spp.insert(pb.m_spp, pb_pixel_count);
                 m_total_saved_samples += (m_params.m_max_samples - pb.m_spp) * pb_pixel_count;
-                m_block_variance.insert(pb.m_block_error, pb_pixel_count);
 
                 if (pb.m_converged)
                     tile_converged_pixel += pb_pixel_count;
@@ -487,8 +486,6 @@ namespace
             stats.insert("samples/pixel", m_spp);
             // How many samples were saved compared to uniform rendering.
             stats.insert_percent("saved samples", m_total_saved_samples, m_total_pixel * m_params.m_max_samples);
-            // Variance of pixel blocks.
-            stats.insert("variance", m_block_variance, 4);
             // How many block converged.
             stats.insert_percent("convergence rate", m_total_pixel_converged, m_total_pixel);
 
@@ -559,7 +556,6 @@ namespace
         size_t                                  m_samples_aov_index;
 
         // Members used for statistics.
-        Population<float>                       m_block_variance;
         Population<uint64>                      m_spp;
         size_t                                  m_total_pixel;
         size_t                                  m_total_pixel_converged;
