@@ -140,6 +140,12 @@ namespace
                         MaxAOVCount);
                 }
             }
+
+
+            if (m_params.m_adaptiveness == 0.0f && thread_index == 0)
+            {
+                RENDERER_LOG_WARNING("adaptiveness is set to 0, use the uniform renderer for better performance");
+            }
         }
 
         void release() override
@@ -255,7 +261,7 @@ namespace
                 const AABB2u& block_image_bb = AABB2i::intersect(framebuffer->get_crop_window(), pb.m_surface);
 
                 if (block_image_bb.extent(0) <= BlockMaxAllowedSize
-                    || block_image_bb.extent(1) <= BlockMaxAllowedSize)
+                    && block_image_bb.extent(1) <= BlockMaxAllowedSize)
                 {
                     rendering_blocks.push_front(pb);
                     continue;
@@ -287,7 +293,6 @@ namespace
                 {
                     PixelBlock& pb = rendering_blocks.front();
                     rendering_blocks.pop_front();
-                    rendering_blocks.push_back(pb);
 
                     // First batch contains `max_samples` * `1 - adaptiveness`
                     const size_t batch_size = m_params.m_max_samples * (1.0f - m_params.m_adaptiveness);
@@ -306,6 +311,7 @@ namespace
                             frame_width,
                             pass_hash,
                             aov_count);
+                    rendering_blocks.push_back(pb);
                 }
             }
 
@@ -325,6 +331,12 @@ namespace
                 // Each batch contains 'min' samples.
                 const int remaining_samples = m_params.m_max_samples - pb.m_spp;
                 const size_t batch_size = min(static_cast<int>(m_params.m_min_samples), remaining_samples);
+
+                if (remaining_samples < 1)
+                {
+                    finished_blocks.push_back(pb);
+                    continue;
+                }
 
                 // Draw samples.
                 sample_pixel_block(
