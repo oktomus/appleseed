@@ -439,8 +439,8 @@ namespace
             if (static_cast<float>(tile_converged_pixel) / static_cast<float>(pixel_count) < BlockConvergenceWarningThreshold / 100.0f)
             {
                 RENDERER_LOG_WARNING(
-                    "%s of pixels have converged, be sure to increase the maximum number of samples \n"
-                    "or the precision threshold for better performance",
+                    "%s of pixels have converged, be sure to increase the maximum number of samples "
+                    "or decrease the noise threshold for better performance",
                     pretty_percent(tile_converged_pixel, pixel_count, 1).c_str());
             }
 
@@ -523,7 +523,7 @@ namespace
               , m_noise_threshold(params.get_required<float>("noise_threshold", 0.03f))
               , m_adaptiveness(params.get_optional<float>("adaptiveness", 0.9f))
             {
-                m_splitting_threshold = m_noise_threshold * 128.0f;
+                m_splitting_threshold = m_noise_threshold * 256.0f;
             }
         };
 
