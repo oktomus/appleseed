@@ -456,14 +456,13 @@ namespace
             // Update statistics.
             m_total_pixel += pixel_count;
             m_total_pixel_converged += tile_converged_pixel;
-            m_block_amount.insert(finished_blocks.size());
 
             // Warn the user if adaptive sampling is not efficient.
 
             if (static_cast<float>(tile_converged_pixel) / static_cast<float>(pixel_count) < BlockConvergenceWarningThreshold / 100.0f)
             {
                 RENDERER_LOG_WARNING(
-                    "only %s of pixels have converged, be sure to increase the maximum number of samples \n"
+                    "%s of pixels have converged, be sure to increase the maximum number of samples \n"
                     "or the precision threshold for better performance",
                     pretty_percent(tile_converged_pixel, pixel_count, 1).c_str());
             }
@@ -490,8 +489,6 @@ namespace
             stats.insert_percent("saved samples", m_total_saved_samples, m_total_pixel * m_params.m_max_samples);
             // Variance of pixel blocks.
             stats.insert("variance", m_block_variance, 4);
-            // How many pixel block per tile.
-            stats.insert("blocks/tile", m_block_amount);
             // How many block converged.
             stats.insert_percent("convergence rate", m_total_pixel_converged, m_total_pixel);
 
@@ -562,7 +559,6 @@ namespace
         size_t                                  m_samples_aov_index;
 
         // Members used for statistics.
-        Population<size_t>                      m_block_amount;
         Population<float>                       m_block_variance;
         Population<uint64>                      m_spp;
         size_t                                  m_total_pixel;
