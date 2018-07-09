@@ -248,43 +248,11 @@ namespace
             const size_t pixel_count = framebuffer->get_width() * framebuffer->get_height();
 
             // Blocks rendering.
-            deque<PixelBlock> initial_blocks(1, PixelBlock(padded_tile_bbox));
             deque<PixelBlock> rendering_blocks;
             vector<PixelBlock> finished_blocks;
 
             // Initially split blocks so that no block is larger than `BlockMaxAllowedSize`.
-            while (initial_blocks.size() > 0)
-            {
-                PixelBlock& pb = initial_blocks.front();
-                initial_blocks.pop_front();
-
-                const AABB2u& block_image_bb = AABB2i::intersect(framebuffer->get_crop_window(), pb.m_surface);
-
-                if (block_image_bb.extent(0) <= BlockMaxAllowedSize
-                    && block_image_bb.extent(1) <= BlockMaxAllowedSize)
-                {
-                    rendering_blocks.push_front(pb);
-                    continue;
-                }
-
-                // Split the block if it's too big.
-                if (pb.m_main_axis == PixelBlock::Axis::HORIZONTAL_X
-                        && block_image_bb.extent(0) >= BlockSplittingThreshold)
-                {
-                    split_pixel_block(
-                        pb,
-                        initial_blocks,
-                        block_image_bb.min.x + static_cast<int>(block_image_bb.extent(0) * 0.5f - 0.5f));
-                }
-                else if (pb.m_main_axis == PixelBlock::Axis::VERTICAL_Y
-                        && block_image_bb.extent(1) >= BlockSplittingThreshold)
-                {
-                    split_pixel_block(
-                        pb,
-                        initial_blocks,
-                        block_image_bb.min.y + static_cast<int>(block_image_bb.extent(1) * 0.5f - 0.5f));
-                }
-            }
+            create_rendering_blocks(rendering_blocks, padded_tile_bbox, framebuffer->get_crop_window());
 
             // First uniform pass based on adaptiveness setting.
             if (m_params.m_adaptiveness < 1.0f)
@@ -324,7 +292,7 @@ namespace
                     break;
                 }
 
-                // Sample the block in front of the queue.
+                // Sample the block in front of the deque.
                 PixelBlock& pb = rendering_blocks.front();
                 rendering_blocks.pop_front();
 
@@ -640,6 +608,47 @@ namespace
                     m_main_axis = Axis::VERTICAL_Y; // block is taller
             }
         };
+
+        void create_rendering_blocks(
+            deque<PixelBlock>&                  rendering_blocks,
+            const AABB2i&                       padded_tile_bbox,
+            const AABB2u&                       frame_bbox)
+        {
+            deque<PixelBlock> initial_blocks(1, PixelBlock(padded_tile_bbox));
+
+            while (initial_blocks.size() > 0)
+            {
+                PixelBlock& pb = initial_blocks.front();
+                initial_blocks.pop_front();
+
+                const AABB2u& block_image_bb = AABB2i::intersect(frame_bbox, pb.m_surface);
+
+                if (block_image_bb.extent(0) <= BlockMaxAllowedSize
+                    && block_image_bb.extent(1) <= BlockMaxAllowedSize)
+                {
+                    rendering_blocks.push_front(pb);
+                    continue;
+                }
+
+                // Split the block if it's too big.
+                if (pb.m_main_axis == PixelBlock::Axis::HORIZONTAL_X
+                        && block_image_bb.extent(0) >= BlockSplittingThreshold)
+                {
+                    split_pixel_block(
+                        pb,
+                        initial_blocks,
+                        block_image_bb.min.x + static_cast<int>(block_image_bb.extent(0) * 0.5f - 0.5f));
+                }
+                else if (pb.m_main_axis == PixelBlock::Axis::VERTICAL_Y
+                        && block_image_bb.extent(1) >= BlockSplittingThreshold)
+                {
+                    split_pixel_block(
+                        pb,
+                        initial_blocks,
+                        block_image_bb.min.y + static_cast<int>(block_image_bb.extent(1) * 0.5f - 0.5f));
+                }
+            }
+        }
 
         void sample_pixel_block(
             PixelBlock&                         pb,
