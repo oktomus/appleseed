@@ -124,7 +124,6 @@ namespace
           , m_aov_accumulators(frame)
           , m_framebuffer_factory(framebuffer_factory)
           , m_params(params)
-          , m_total_saved_samples(0)
           , m_total_pixel_converged(0)
           , m_total_pixel(0)
         {
@@ -420,7 +419,6 @@ namespace
 
                 // Update statistics.
                 m_spp.insert(pb.m_spp, pb_pixel_count);
-                m_total_saved_samples += (m_params.m_max_samples - pb.m_spp) * pb_pixel_count;
 
                 if (pb.m_converged)
                     tile_converged_pixel += pb_pixel_count;
@@ -484,8 +482,6 @@ namespace
             Statistics stats;
             // How many samples per pixel were made.
             stats.insert("samples/pixel", m_spp);
-            // How many samples were saved compared to uniform rendering.
-            stats.insert_percent("saved samples", m_total_saved_samples, m_total_pixel * m_params.m_max_samples);
             // How many block converged.
             stats.insert_percent("convergence rate", m_total_pixel_converged, m_total_pixel);
 
@@ -559,7 +555,6 @@ namespace
         Population<uint64>                      m_spp;
         size_t                                  m_total_pixel;
         size_t                                  m_total_pixel_converged;
-        size_t                                  m_total_saved_samples;
 
         void on_tile_begin(
             const Frame&            frame,
