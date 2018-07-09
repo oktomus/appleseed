@@ -90,7 +90,7 @@ namespace
 {
 
     // Minimum allowed size for a block of pixel.
-    const size_t BlockMinAllowedSize = 4;
+    const size_t BlockMinAllowedSize = 8;
     // Maximum allowed size for a block of pixel. A low value may introduce artifacts.
     const size_t BlockMaxAllowedSize = 40;
     // Minimum allowed size for a block of pixel before splitting.
@@ -284,25 +284,30 @@ namespace
             // First uniform pass based on adaptiveness setting.
             if (m_params.m_adaptiveness < 1.0f)
             {
-                PixelBlock& pb = rendering_blocks.front();
+                for (size_t i = 0; i < rendering_blocks.size(); ++i)
+                {
+                    PixelBlock& pb = rendering_blocks.front();
+                    rendering_blocks.pop_front();
+                    rendering_blocks.push_back(pb);
 
-                // First batch contains `max_samples` * `1 - adaptiveness`
-                const size_t batch_size = m_params.m_max_samples * (1.0f - m_params.m_adaptiveness);
+                    // First batch contains `max_samples` * `1 - adaptiveness`
+                    const size_t batch_size = m_params.m_max_samples * (1.0f - m_params.m_adaptiveness);
 
-                // Draw samples.
-                sample_pixel_block(
-                    pb,
-                    abort_switch,
-                    batch_size,
-                    framebuffer,
-                    second_framebuffer,
-                    tile_bbox,
-                    tile_origin_x,
-                    tile_origin_y,
-                    frame,
-                    frame_width,
-                    pass_hash,
-                    aov_count);
+                    // Draw samples.
+                    sample_pixel_block(
+                            pb,
+                            abort_switch,
+                            batch_size,
+                            framebuffer,
+                            second_framebuffer,
+                            tile_bbox,
+                            tile_origin_x,
+                            tile_origin_y,
+                            frame,
+                            frame_width,
+                            pass_hash,
+                            aov_count);
+                }
             }
 
             while (true)
