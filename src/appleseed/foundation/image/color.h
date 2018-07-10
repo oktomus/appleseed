@@ -328,8 +328,8 @@ typedef Color<double,   4> Color4d;
 //
 
 // Compute a color from a given integer.
-template <typename T>
-Color3f integer_to_color(const T i);
+template <typename T, typename Int>
+Color<T, 3> integer_to_color3(const Int i);
 
 
 //
@@ -1129,8 +1129,8 @@ inline void Color<T, 4>::unpremultiply()
 // Color functions implementation.
 //
 
-template <typename T>
-Color3f integer_to_color(const T i)
+template <typename T, typename Int>
+Color<T, 3> integer_to_color3(const Int i)
 {
     const uint32 u = static_cast<uint32>(i);    // keep the low 32 bits
 
@@ -1138,12 +1138,11 @@ Color3f integer_to_color(const T i)
     const uint32 y = hash_uint32(u + 1);
     const uint32 z = hash_uint32(u + 2);
 
-    return Color3f(
-        static_cast<float>(x) * (1.0f / 4294967295.0f),
-        static_cast<float>(y) * (1.0f / 4294967295.0f),
-        static_cast<float>(z) * (1.0f / 4294967295.0f));
+    return Color<T, 3>(
+        static_cast<T>(x) * (1.0f / 4294967295.0f),
+        static_cast<T>(y) * (1.0f / 4294967295.0f),
+        static_cast<T>(z) * (1.0f / 4294967295.0f));
 }
-
 
 }       // namespace foundation
 

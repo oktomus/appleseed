@@ -1841,7 +1841,6 @@ namespace
 
             if (frame_params.strings().exist("save_extra_aovs"))
             {
-                // The frame does not reference any camera: use the first camera.
                 frame_params.insert(
                     "enable_diagnostic_aovs",
                     frame_params.get<bool>("save_extra_aovs"));

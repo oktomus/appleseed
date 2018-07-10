@@ -211,7 +211,7 @@ Color4f TextureSource::get_texel(
 
     return
         Color4f(
-            integer_to_color(
+            integer_to_color3(
                 mix_uint32(
                     static_cast<uint32>(m_assembly_uid),
                     static_cast<uint32>(m_texture_uid),

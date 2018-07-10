@@ -465,13 +465,13 @@ void DiagnosticSurfaceShader::evaluate(
 
       case AssemblyInstances:
         set_result(
-            integer_to_color(shading_point.get_assembly_instance().get_uid()),
+            integer_to_color3<float>(shading_point.get_assembly_instance().get_uid()),
             shading_result);
         break;
 
       case ObjectInstances:
         set_result(
-            integer_to_color(shading_point.get_object_instance().get_uid()),
+            integer_to_color3<float>(shading_point.get_object_instance().get_uid()),
             shading_result);
         break;
 
@@ -481,7 +481,7 @@ void DiagnosticSurfaceShader::evaluate(
                 mix_uint32(
                     static_cast<uint32>(shading_point.get_object_instance().get_uid()),
                     static_cast<uint32>(shading_point.get_region_index()));
-            set_result(integer_to_color(h), shading_result);
+            set_result(integer_to_color3<float>(h), shading_result);
         }
         break;
 
@@ -492,7 +492,7 @@ void DiagnosticSurfaceShader::evaluate(
                     static_cast<uint32>(shading_point.get_object_instance().get_uid()),
                     static_cast<uint32>(shading_point.get_region_index()),
                     static_cast<uint32>(shading_point.get_primitive_index()));
-            set_result(integer_to_color(h), shading_result);
+            set_result(integer_to_color3<float>(h), shading_result);
         }
         break;
 
@@ -500,7 +500,7 @@ void DiagnosticSurfaceShader::evaluate(
         {
             const Material* material = shading_point.get_material();
             if (material)
-                set_result(integer_to_color(material->get_uid()), shading_result);
+                set_result(integer_to_color3<float>(material->get_uid()), shading_result);
             else shading_result.set_main_to_opaque_pink();
         }
         break;
