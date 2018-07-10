@@ -42,9 +42,9 @@
 #include "renderer/kernel/rendering/debug/debugsamplerenderer.h"
 #include "renderer/kernel/rendering/debug/debugtilerenderer.h"
 #include "renderer/kernel/rendering/ephemeralshadingresultframebufferfactory.h"
+#include "renderer/kernel/rendering/final/adaptivepixelrenderer.h"
 #include "renderer/kernel/rendering/final/adaptivetilerenderer.h"
 #include "renderer/kernel/rendering/final/uniformpixelrenderer.h"
-#include "renderer/kernel/rendering/final/adaptivepixelrenderer.h"
 #include "renderer/kernel/rendering/generic/genericframerenderer.h"
 #include "renderer/kernel/rendering/generic/genericsamplegenerator.h"
 #include "renderer/kernel/rendering/generic/genericsamplerenderer.h"
@@ -357,13 +357,11 @@ bool RendererComponents::create_pixel_renderer_factory()
             return false;
         }
 
-        ParamArray params = get_child_and_inherit_globals(m_params, "adaptive_pixel_renderer");
-        copy_param(params, m_params, "passes");
         m_pixel_renderer_factory.reset(
             new AdaptivePixelRendererFactory(
                 m_frame,
                 m_sample_renderer_factory.get(),
-                params));
+                get_child_and_inherit_globals(m_params, "adaptive_pixel_renderer")));
 
         return true;
     }
