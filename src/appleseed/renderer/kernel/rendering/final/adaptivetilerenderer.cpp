@@ -67,7 +67,6 @@
 
 // Standard headers.
 #include <cassert>
-#include <cmath>
 #include <deque>
 #include <memory>
 #include <string>
