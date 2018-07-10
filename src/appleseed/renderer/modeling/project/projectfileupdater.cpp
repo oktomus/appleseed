@@ -1807,7 +1807,6 @@ namespace
         }
 
       private:
-
         // Merge frame::save_extra_aovs and PixelRenderer::enable_diagnostics.
         void update_diagnostic_option()
         {
@@ -1817,18 +1816,18 @@ namespace
 
                 if (root.dictionaries().exist("uniform_pixel_renderer"))
                 {
-                    Dictionary& gtr = root.dictionary("uniform_pixel_renderer");
+                    Dictionary& upr = root.dictionary("uniform_pixel_renderer");
 
-                    if (gtr.strings().exist("enable_diagnostics"))
-                        gtr.strings().remove("enable_diagnostics");
+                    if (upr.strings().exist("enable_diagnostics"))
+                        upr.strings().remove("enable_diagnostics");
                 }
 
                 if (root.dictionaries().exist("adaptive_pixel_renderer"))
                 {
-                    Dictionary& gtr = root.dictionary("adaptive_pixel_renderer");
+                    Dictionary& apr = root.dictionary("adaptive_pixel_renderer");
 
-                    if (gtr.strings().exist("enable_diagnostics"))
-                        gtr.strings().remove("enable_diagnostics");
+                    if (apr.strings().exist("enable_diagnostics"))
+                        apr.strings().remove("enable_diagnostics");
                 }
             }
 
@@ -1856,15 +1855,13 @@ namespace
             {
                 Dictionary& root = i->get_parameters();
 
-                if (!root.dictionaries().exist("final"))
+                if (strcmp(i->get_name(), "final") != 0)
                     continue;
 
-                Dictionary& gtr = root.dictionary("final");
-
-                if (gtr.strings().exist("pixel_renderer"))
+                if (root.strings().exist("pixel_renderer"))
                 {
-                    gtr.insert("sampling_method", gtr.strings().get<string>("pixel_renderer"));
-                    gtr.strings().remove("pixel_renderer");
+                    root.insert("sampling_method", root.strings().get<string>("pixel_renderer"));
+                    root.strings().remove("pixel_renderer");
                 }
             }
         }
