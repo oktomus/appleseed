@@ -1838,14 +1838,7 @@ namespace
 
             ParamArray& frame_params = frame->get_parameters();
 
-            if (frame_params.strings().exist("save_extra_aovs"))
-            {
-                frame_params.insert(
-                    "enable_diagnostic_aovs",
-                    frame_params.get<bool>("save_extra_aovs"));
-
-                frame_params.strings().remove("save_extra_aovs");
-            }
+            move_if_exist(frame_params, "enable_diagnostic_aovs", "save_extra_aovs");
         }
 
         // Rename pixel_renderer to sampling_method.
@@ -1853,16 +1846,12 @@ namespace
         {
             for (each<ConfigurationContainer> i = m_project.configurations(); i; ++i)
             {
-                Dictionary& root = i->get_parameters();
+                ParamArray& root = i->get_parameters();
 
                 if (strcmp(i->get_name(), "final") != 0)
                     continue;
 
-                if (root.strings().exist("pixel_renderer"))
-                {
-                    root.insert("sampling_method", root.strings().get<string>("pixel_renderer"));
-                    root.strings().remove("pixel_renderer");
-                }
+                move_if_exist(root, "sampling_method", "pixel_renderer");
             }
         }
     };
