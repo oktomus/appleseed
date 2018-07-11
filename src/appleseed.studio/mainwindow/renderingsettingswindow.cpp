@@ -460,7 +460,7 @@ namespace
             create_image_plane_sampling_general_settings(layout);
             create_image_plane_sampling_sampler_settings(layout);
 
-            create_direct_link("general.sampler",                           "sampling_method", "uniform");
+            create_direct_link("general.sampler",                           "pixel_renderer", "uniform");
 
             create_direct_link("general.passes",                            "generic_frame_renderer.passes");
 

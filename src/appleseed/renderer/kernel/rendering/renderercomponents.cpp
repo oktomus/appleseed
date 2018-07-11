@@ -325,7 +325,7 @@ bool RendererComponents::create_sample_generator_factory()
 
 bool RendererComponents::create_pixel_renderer_factory()
 {
-    const string name = m_params.get_optional<string>("sampling_method", "");
+    const string name = m_params.get_optional<string>("pixel_renderer", "");
 
     if (name.empty())
     {
@@ -372,7 +372,7 @@ bool RendererComponents::create_pixel_renderer_factory()
     else
     {
         RENDERER_LOG_ERROR(
-            "invalid value for \"sampling_method\" parameter: \"%s\".",
+            "invalid value for \"pixel_renderer\" parameter: \"%s\".",
             name.c_str());
         return false;
     }
@@ -410,9 +410,9 @@ bool RendererComponents::create_shading_result_framebuffer_factory()
 bool RendererComponents::create_tile_renderer_factory()
 {
     const string name = m_params.get_optional<string>("tile_renderer", "");
-    const string sampling_method = m_params.get_optional<string>("sampling_method", "");
+    const string pixel_renderer = m_params.get_optional<string>("pixel_renderer", "");
 
-    if (name == "generic" && sampling_method == "adaptive_tile")
+    if (name == "generic" && pixel_renderer == "adaptive_tile")
     {
         if (m_sample_renderer_factory.get() == nullptr)
         {

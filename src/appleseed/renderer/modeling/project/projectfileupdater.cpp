@@ -1803,7 +1803,6 @@ namespace
         void update() override
         {
             update_diagnostic_option();
-            update_pixel_renderer_option();
         }
 
       private:
@@ -1839,20 +1838,6 @@ namespace
             ParamArray& frame_params = frame->get_parameters();
 
             move_if_exist(frame_params, "enable_diagnostic_aovs", "save_extra_aovs");
-        }
-
-        // Rename pixel_renderer to sampling_method.
-        void update_pixel_renderer_option()
-        {
-            for (each<ConfigurationContainer> i = m_project.configurations(); i; ++i)
-            {
-                ParamArray& root = i->get_parameters();
-
-                if (strcmp(i->get_name(), "final") != 0)
-                    continue;
-
-                move_if_exist(root, "sampling_method", "pixel_renderer");
-            }
         }
     };
 }
