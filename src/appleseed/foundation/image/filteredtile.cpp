@@ -204,9 +204,9 @@ float FilteredTile::compute_tile_variance(
     assert(main->get_crop_window().contains(bb.max));
 
     // Loop over block pixels.
-    for (int y = bb.min.y; y <= bb.max.y; ++y)
+    for (size_t y = bb.min.y; y <= bb.max.y; ++y)
     {
-        for (int x = bb.min.x; x <= bb.max.x; ++x)
+        for (size_t x = bb.min.x; x <= bb.max.x; ++x)
         {
             const float* main_ptr = main->pixel(x, y);
             const float* second_ptr = second->pixel(x, y);

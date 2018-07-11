@@ -160,12 +160,12 @@ namespace
             IShadingResultFrameBufferFactory*   framebuffer_factory,
             const ParamArray&                   params,
             const size_t                        thread_index)
-          : m_sample_renderer(sample_renderer_factory->create(thread_index))
-          , m_aov_accumulators(frame)
+          : m_aov_accumulators(frame)
           , m_framebuffer_factory(framebuffer_factory)
           , m_params(params)
-          , m_total_pixel_converged(0)
+          , m_sample_renderer(sample_renderer_factory->create(thread_index))
           , m_total_pixel(0)
+          , m_total_pixel_converged(0)
         {
             compute_tile_margins(frame, thread_index == 0);
 
@@ -303,7 +303,8 @@ namespace
                     rendering_blocks.pop_front();
 
                     // First batch contains `max_samples` * `1 - adaptiveness`
-                    const size_t batch_size = m_params.m_max_samples * (1.0f - m_params.m_adaptiveness);
+                    const size_t batch_size = static_cast<size_t>(
+                        m_params.m_max_samples * (1.0f - m_params.m_adaptiveness));
 
                     // Draw samples.
                     sample_pixel_block(
@@ -338,8 +339,9 @@ namespace
                 rendering_blocks.pop_front();
 
                 // Each batch contains 'min' samples.
-                const int remaining_samples = m_params.m_max_samples - pb.m_spp;
-                const size_t batch_size = min(static_cast<int>(m_params.m_min_samples), remaining_samples);
+                assert(m_params.m_max_samples > pb.m_spp);
+                const size_t remaining_samples = m_params.m_max_samples - pb.m_spp;
+                const size_t batch_size = min(m_params.m_min_samples, remaining_samples);
 
                 if (remaining_samples < 1)
                 {
@@ -391,7 +393,8 @@ namespace
                             split_pixel_block(
                                 pb,
                                 rendering_blocks,
-                                block_image_bb.min.x + static_cast<int>(block_image_bb.extent(0) * 0.5f - 0.5f));
+                                static_cast<int>(block_image_bb.min.x)
+                                + static_cast<int>(block_image_bb.extent(0) * 0.5f - 0.5f));
                         }
                         else if (pb.m_main_axis == PixelBlock::Axis::VERTICAL_Y
                                 && block_image_bb.extent(1) >= BlockSplittingThreshold)
@@ -399,7 +402,8 @@ namespace
                             split_pixel_block(
                                 pb,
                                 rendering_blocks,
-                                block_image_bb.min.y + static_cast<int>(block_image_bb.extent(1) * 0.5f - 0.5f));
+                                static_cast<int>(block_image_bb.min.y)
+                                + static_cast<int>(block_image_bb.extent(1) * 0.5f - 0.5f));
                         }
                         else
                         {
@@ -420,8 +424,8 @@ namespace
             for (size_t i = 0, n = finished_blocks.size(); i < n; ++i)
             {
                 const PixelBlock& pb = finished_blocks[i];
-                const AABB2i& pb_image_aabb = AABB2i::intersect(pb.m_surface, tile_bbox);
-                const float pb_pixel_count = pb_image_aabb.volume();
+                const AABB2u& pb_image_aabb = AABB2i::intersect(framebuffer->get_crop_window(), pb.m_surface);
+                const size_t pb_pixel_count = static_cast<size_t>(pb_image_aabb.volume());
 
                 // Update statistics.
                 m_spp.insert(pb.m_spp, pb_pixel_count);
@@ -432,12 +436,12 @@ namespace
                 if (!frame.are_diagnostic_aovs_enabled())
                     continue;
 
-                for (int y = pb_image_aabb.min.y; y <= pb_image_aabb.max.y; ++y)
+                for (size_t y = pb_image_aabb.min.y; y <= pb_image_aabb.max.y; ++y)
                 {
-                    for (int x = pb_image_aabb.min.x; x <= pb_image_aabb.max.x; ++x)
+                    for (size_t x = pb_image_aabb.min.x; x <= pb_image_aabb.max.x; ++x)
                     {
                         // Retrieve the coordinates of the pixel in the padded tile.
-                        const Vector2i pt(x, y);
+                        const Vector2u pt(x, y);
 
                         // Store diagnostic value in the diagnostic tile.
                         float samples_amount =
@@ -624,7 +628,8 @@ namespace
                     split_pixel_block(
                         pb,
                         initial_blocks,
-                        block_image_bb.min.x + static_cast<int>(block_image_bb.extent(0) * 0.5f - 0.5f));
+                        static_cast<int>(block_image_bb.min.x)
+                        + static_cast<int>(block_image_bb.extent(0) * 0.5f - 0.5f));
                 }
                 else if (pb.m_main_axis == PixelBlock::Axis::VERTICAL_Y
                         && block_image_bb.extent(1) >= BlockSplittingThreshold)
@@ -632,7 +637,8 @@ namespace
                     split_pixel_block(
                         pb,
                         initial_blocks,
-                        block_image_bb.min.y + static_cast<int>(block_image_bb.extent(1) * 0.5f - 0.5f));
+                        static_cast<int>(block_image_bb.min.y)
+                        + static_cast<int>(block_image_bb.extent(1) * 0.5f - 0.5f));
                 }
             }
         }
@@ -775,12 +781,16 @@ namespace
 
             if (pb.m_main_axis == PixelBlock::Axis::HORIZONTAL_X)
             {
+                assert(pb.m_surface.min.x < splitting_point);
+                assert(pb.m_surface.max.x > splitting_point);
                 // Split horizontaly.
                 f_half.max.x = splitting_point;
                 s_half.min.x = splitting_point + 1;
             }
             else
             {
+                assert(pb.m_surface.min.y < splitting_point);
+                assert(pb.m_surface.max.y > splitting_point);
                 // Split verticaly.
                 f_half.max.y = splitting_point;
                 s_half.min.y = splitting_point + 1;
