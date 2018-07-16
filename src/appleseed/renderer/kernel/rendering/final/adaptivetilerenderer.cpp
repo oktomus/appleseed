@@ -181,7 +181,6 @@ namespace
                 }
             }
 
-
             if (m_params.m_adaptiveness == 0.0f && thread_index == 0)
             {
                 RENDERER_LOG_WARNING("adaptiveness is set to 0, use the uniform renderer for better performance");
@@ -749,7 +748,6 @@ namespace
                 // Ignore invalid samples.
                 if (!shading_result.is_valid())
                 {
-                    //signal_invalid_sample();
                     continue;
                 }
 
