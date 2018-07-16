@@ -410,9 +410,8 @@ bool RendererComponents::create_shading_result_framebuffer_factory()
 bool RendererComponents::create_tile_renderer_factory()
 {
     const string name = m_params.get_optional<string>("tile_renderer", "");
-    const string pixel_renderer = m_params.get_optional<string>("pixel_renderer", "");
 
-    if (name == "generic" && pixel_renderer == "adaptive_tile")
+    if (name == "adaptive")
     {
         if (m_sample_renderer_factory.get() == nullptr)
         {

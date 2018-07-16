@@ -460,8 +460,6 @@ namespace
             create_image_plane_sampling_general_settings(layout);
             create_image_plane_sampling_sampler_settings(layout);
 
-            create_direct_link("general.sampler",                           "pixel_renderer", "uniform");
-
             create_direct_link("general.passes",                            "generic_frame_renderer.passes");
 
             create_direct_link("uniform_sampler.samples",                   "uniform_pixel_renderer.samples");
@@ -477,6 +475,7 @@ namespace
             create_direct_link("adaptive_tile_sampler.noise_threshold",     "adaptive_tile_renderer.noise_threshold");
             create_direct_link("adaptive_tile_sampler.adaptiveness",        "adaptive_tile_renderer.adaptiveness");
 
+            load_general_sampler(config);
             load_directly_linked_values(config);
         }
 
@@ -488,6 +487,37 @@ namespace
                 config,
                 "shading_result_framebuffer",
                 get_widget<size_t>("general.passes") > 1 ? "permanent" : "ephemeral");
+
+            // Set the pixel and tile renderer.
+            const QString sampler =
+                m_image_plane_sampler_combo->itemData(
+                    m_image_plane_sampler_combo->currentIndex()
+                ).value<QString>();
+
+            if (sampler == "adaptive_tile")
+            {
+                set_config(
+                    config,
+                    "pixel_renderer",
+                    "");
+
+                set_config(
+                    config,
+                    "tile_renderer",
+                    "adaptive");
+            }
+            else
+            {
+                set_config(
+                    config,
+                    "pixel_renderer",
+                    sampler.toLatin1().data());
+
+                set_config(
+                    config,
+                    "tile_renderer",
+                    "generic");
+            }
         }
 
       private:
@@ -616,6 +646,37 @@ namespace
             QDoubleSpinBox* adaptiveness = create_double_input("adaptive_tile_sampler.adaptiveness", 0.0, 1.0, 1, 0.1);
             adaptiveness->setToolTip(m_params_metadata.get_path("adaptive_tile_renderer.adaptiveness.help"));
             sublayout->addRow("Adaptiveness", adaptiveness);
+        }
+
+        void load_general_sampler(const Configuration& config)
+        {
+            const string default_tr_path = "tile_renderer.default";
+            const string default_tr_value =
+                m_params_metadata.get_path_optional<string>(
+                        default_tr_path.c_str(), "");
+            const string tr_value = get_config<string>(config, "tile_renderer", default_tr_value);
+
+            if (tr_value == "adaptive")
+            {
+                m_image_plane_sampler_combo->setCurrentIndex(2);
+                return;
+            }
+
+            const string default_pr_path = "pixel_renderer.default";
+            const string default_pr_value =
+                m_params_metadata.get_path_optional<string>(
+                        default_pr_path.c_str(), "");
+
+            const string pr_value = get_config<string>(config, "pixel_renderer", default_pr_value);
+
+            if (pr_value == "adaptive")
+            {
+                m_image_plane_sampler_combo->setCurrentIndex(1);
+            }
+            else
+            {
+                m_image_plane_sampler_combo->setCurrentIndex(0);
+            }
         }
 
       private slots:
