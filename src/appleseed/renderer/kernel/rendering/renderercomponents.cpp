@@ -365,10 +365,6 @@ bool RendererComponents::create_pixel_renderer_factory()
 
         return true;
     }
-    else if (name == "adaptive_tile")
-    {
-        return true;
-    }
     else
     {
         RENDERER_LOG_ERROR(
@@ -411,7 +407,11 @@ bool RendererComponents::create_tile_renderer_factory()
 {
     const string name = m_params.get_optional<string>("tile_renderer", "");
 
-    if (name == "adaptive")
+    if (name.empty())
+    {
+        return true;
+    }
+    else if (name == "adaptive")
     {
         if (m_sample_renderer_factory.get() == nullptr)
         {
@@ -465,10 +465,6 @@ bool RendererComponents::create_tile_renderer_factory()
     else if (name == "debug")
     {
         m_tile_renderer_factory.reset(new DebugTileRendererFactory());
-        return true;
-    }
-    else if (name.empty())
-    {
         return true;
     }
     else

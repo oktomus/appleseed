@@ -489,35 +489,18 @@ namespace
                 get_widget<size_t>("general.passes") > 1 ? "permanent" : "ephemeral");
 
             // Set the pixel and tile renderer.
-            const QString sampler =
-                m_image_plane_sampler_combo->itemData(
-                    m_image_plane_sampler_combo->currentIndex()
-                ).value<QString>();
+            const QString sampler = m_image_plane_sampler_combo->itemData(
+                m_image_plane_sampler_combo->currentIndex()).value<QString>();
 
-            if (sampler == "adaptive_tile")
-            {
-                set_config(
-                    config,
-                    "pixel_renderer",
-                    "");
+            set_config(
+                config,
+                "pixel_renderer",
+                sampler == "adaptive_tile" ? "" : sampler.toLatin1().data());
 
-                set_config(
-                    config,
-                    "tile_renderer",
-                    "adaptive");
-            }
-            else
-            {
-                set_config(
-                    config,
-                    "pixel_renderer",
-                    sampler.toLatin1().data());
-
-                set_config(
-                    config,
-                    "tile_renderer",
-                    "generic");
-            }
+            set_config(
+                config,
+                "tile_renderer",
+                sampler == "adaptive_tile" ? "adaptive" : "generic");
         }
 
       private:
@@ -650,11 +633,10 @@ namespace
 
         void load_general_sampler(const Configuration& config)
         {
-            const string default_tr_path = "tile_renderer.default";
-            const string default_tr_value =
-                m_params_metadata.get_path_optional<string>(
-                        default_tr_path.c_str(), "");
-            const string tr_value = get_config<string>(config, "tile_renderer", default_tr_value);
+            const string default_tr_value = m_params_metadata.get_path_optional<string>(
+                    "tile_renderer.default", "");
+            const string tr_value = get_config<string>(
+                    config, "tile_renderer", default_tr_value);
 
             if (tr_value == "adaptive")
             {
@@ -662,21 +644,13 @@ namespace
                 return;
             }
 
-            const string default_pr_path = "pixel_renderer.default";
-            const string default_pr_value =
-                m_params_metadata.get_path_optional<string>(
-                        default_pr_path.c_str(), "");
+            const string default_pr_value = m_params_metadata.get_path_optional<string>(
+                "pixel_renderer.default", "");
+            const string pr_value = get_config<string>(
+                    config, "pixel_renderer", default_pr_value);
 
-            const string pr_value = get_config<string>(config, "pixel_renderer", default_pr_value);
-
-            if (pr_value == "adaptive")
-            {
-                m_image_plane_sampler_combo->setCurrentIndex(1);
-            }
-            else
-            {
-                m_image_plane_sampler_combo->setCurrentIndex(0);
-            }
+            m_image_plane_sampler_combo->setCurrentIndex(
+                pr_value == "adaptive" ? 1 : 0);
         }
 
       private slots:
