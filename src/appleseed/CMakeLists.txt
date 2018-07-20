@@ -629,8 +629,8 @@ set (foundation_utility_benchmark_sources
     foundation/utility/benchmark/benchmarklistenerbase.h
     foundation/utility/benchmark/benchmarkresult.cpp
     foundation/utility/benchmark/benchmarkresult.h
-    foundation/utility/benchmark/benchmarkserie.cpp
-    foundation/utility/benchmark/benchmarkserie.h
+    foundation/utility/benchmark/benchmarkseries.cpp
+    foundation/utility/benchmark/benchmarkseries.h
     foundation/utility/benchmark/benchmarksuite.cpp
     foundation/utility/benchmark/benchmarksuite.h
     foundation/utility/benchmark/benchmarksuiterepository.cpp
@@ -1401,6 +1401,8 @@ set (renderer_modeling_aov_sources
     renderer/modeling/aov/denoiseraov.h
     renderer/modeling/aov/depthaov.cpp
     renderer/modeling/aov/depthaov.h
+    renderer/modeling/aov/diagnosticaov.cpp
+    renderer/modeling/aov/diagnosticaov.h
     renderer/modeling/aov/diffuseaov.cpp
     renderer/modeling/aov/diffuseaov.h
     renderer/modeling/aov/emissionaov.cpp

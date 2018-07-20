@@ -32,19 +32,14 @@
 
 // appleseed.renderer headers.
 #include "renderer/kernel/rendering/ipixelrenderer.h"
-#include "renderer/utility/paramarray.h"
 
 // appleseed.foundation headers.
 #include "foundation/math/aabb.h"
-#include "foundation/math/vector.h"
-#include "foundation/platform/compiler.h"
 
 // Standard headers.
 #include <cstddef>
-#include <memory>
 
 // Forward declarations.
-namespace foundation    { class Dictionary; }
 namespace foundation    { class Tile; }
 namespace renderer      { class AOVAccumulatorContainer; }
 namespace renderer      { class Frame; }
@@ -62,20 +57,21 @@ class PixelRendererBase
 {
   public:
     // Constructor.
-    PixelRendererBase(
-        const Frame&        frame,
-        const size_t        thread_index,
-        const ParamArray&   params);
+    PixelRendererBase();
 
     // This method is called before a tile gets rendered.
     void on_tile_begin(
         const Frame&                frame,
+        const size_t                tile_x,
+        const size_t                tile_y,
         foundation::Tile&           tile,
         TileStack&                  aov_tiles) override;
 
     // This method is called after a tile has been rendered.
     void on_tile_end(
         const Frame&                frame,
+        const size_t                tile_x,
+        const size_t                tile_y,
         foundation::Tile&           tile,
         TileStack&                  aov_tiles) override;
 
@@ -97,10 +93,8 @@ class PixelRendererBase
     void signal_invalid_sample();
 
   private:
-    size_t                                  m_invalid_sample_count;
-    size_t                                  m_invalid_pixel_count;
-    size_t                                  m_invalid_sample_aov_index;
-    std::unique_ptr<foundation::Tile>       m_invalid_sample_diagnostic;
+    size_t m_invalid_pixel_count;
+    size_t m_invalid_sample_count;
 };
 
 }       // namespace renderer

@@ -107,9 +107,6 @@ class APPLESEED_DLLSYMBOL Frame
     // Access the AOV images.
     ImageStack& aov_images() const;
 
-    // Create an extra AOV image if it does not exist.
-    size_t create_extra_aov_image(const char* name) const;
-
     // Return the reconstruction filter used by the main image and the AOV images.
     const foundation::Filter2f& get_filter() const;
 
@@ -118,9 +115,6 @@ class APPLESEED_DLLSYMBOL Frame
     bool has_crop_window() const;
     void set_crop_window(const foundation::AABB2u& crop_window);
     const foundation::AABB2u& get_crop_window() const;
-
-    // Check if extra aovs are enabled and saved.
-    bool are_diagnostic_aovs_enabled() const;
 
     // Expose asset file paths referenced by this entity to the outside.
     void collect_asset_paths(foundation::StringArray& paths) const override;

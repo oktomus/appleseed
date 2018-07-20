@@ -42,6 +42,7 @@
 #include "renderer/kernel/rendering/pixelrendererbase.h"
 #include "renderer/kernel/rendering/shadingresultframebuffer.h"
 #include "renderer/kernel/shading/shadingresult.h"
+#include "renderer/modeling/aov/aov.h"
 #include "renderer/modeling/frame/frame.h"
 #include "renderer/utility/settingsparsing.h"
 
@@ -163,23 +164,15 @@ namespace
           : m_aov_accumulators(frame)
           , m_framebuffer_factory(framebuffer_factory)
           , m_params(params)
+          , m_invalid_sample_count(0)
+          , m_sample_aov_tile(nullptr)
           , m_sample_renderer(sample_renderer_factory->create(thread_index))
           , m_total_pixel(0)
           , m_total_pixel_converged(0)
         {
             compute_tile_margins(frame, thread_index == 0);
 
-            if (frame.are_diagnostic_aovs_enabled())
-            {
-                m_samples_aov_index = frame.create_extra_aov_image("samples");
-
-                if ((thread_index == 0) && m_samples_aov_index == ~size_t(0))
-                {
-                    RENDERER_LOG_WARNING(
-                        "could not create some of the diagnostic aovs, maximum number of aovs (" FMT_SIZE_T ") reached.",
-                        MaxAOVCount);
-                }
-            }
+            m_sample_aov_index = frame.aovs().get_index("pixel_sample");
 
             if (m_params.m_adaptiveness == 0.0f && thread_index == 0)
             {
@@ -256,15 +249,15 @@ namespace
             padded_tile_bbox.max.x = tile_bbox.max.x + m_margin_width;
             padded_tile_bbox.max.y = tile_bbox.max.y + m_margin_height;
 
-            // Inform the pixel renderer that we are about to render a tile.
-            on_tile_begin(frame, tile, aov_tiles);
-
             // Inform the AOV accumulators that we are about to render a tile.
             m_aov_accumulators.on_tile_begin(
                 frame,
                 tile_x,
                 tile_y,
                 m_params.m_max_samples);
+
+            // Inform the pixel renderer that we are about to render a tile.
+            on_tile_begin(frame, tile_x, tile_y, tile, aov_tiles);
 
             // Create the framebuffer into which we will accumulate the samples.
             ShadingResultFrameBuffer* framebuffer =
@@ -312,7 +305,6 @@ namespace
                             batch_size,
                             framebuffer,
                             second_framebuffer,
-                            tile_bbox,
                             tile_origin_x,
                             tile_origin_y,
                             frame,
@@ -355,7 +347,6 @@ namespace
                     batch_size,
                     framebuffer,
                     second_framebuffer,
-                    tile_bbox,
                     tile_origin_x,
                     tile_origin_y,
                     frame,
@@ -432,7 +423,7 @@ namespace
                 if (pb.m_converged)
                     tile_converged_pixel += pb_pixel_count;
 
-                if (!frame.are_diagnostic_aovs_enabled())
+                if (m_sample_aov_tile == nullptr)
                     continue;
 
                 for (size_t y = pb_image_aabb.min.y; y <= pb_image_aabb.max.y; ++y)
@@ -442,17 +433,8 @@ namespace
                         // Retrieve the coordinates of the pixel in the padded tile.
                         const Vector2u pt(x, y);
 
-                        // Store diagnostic value in the diagnostic tile.
-                        float samples_amount =
-                            m_params.m_min_samples == m_params.m_max_samples
-                            ? 1.0f
-                            : fit(
-                                static_cast<float>(pb.m_spp),
-                                static_cast<float>(m_params.m_min_samples),
-                                static_cast<float>(m_params.m_max_samples),
-                                0.0f, 1.0f);
-
-                        m_diagnostics->set_pixel(pt.x, pt.y, &samples_amount);
+                        Color3f value(static_cast<float>(pb.m_spp), 0.0f, 0.0f);
+                        m_sample_aov_tile->set_pixel(pt.x, pt.y, value);
                     }
                 }
             }
@@ -475,11 +457,11 @@ namespace
             // Release the framebuffer.
             m_framebuffer_factory->destroy(framebuffer);
 
+            // Inform the pixel renderer that we are done rendering the tile.
+            on_tile_end(frame, tile_x, tile_y, tile, aov_tiles);
+
             // Inform the AOV accumulators that we are done rendering a tile.
             m_aov_accumulators.on_tile_end(frame, tile_x, tile_y);
-
-            // Inform the pixel renderer that we are done rendering the tile.
-            on_tile_end(frame, tile, aov_tiles);
         }
 
         StatisticsVector get_statistics() const override
@@ -520,12 +502,13 @@ namespace
         };
 
         AOVAccumulatorContainer                 m_aov_accumulators;
-        unique_ptr<Tile>                        m_diagnostics;
         IShadingResultFrameBufferFactory*       m_framebuffer_factory;
         int                                     m_margin_width;
         int                                     m_margin_height;
         const Parameters                        m_params;
-        size_t                                  m_samples_aov_index;
+        size_t                                  m_sample_aov_index;
+        size_t                                  m_invalid_sample_count;
+        Tile*                                   m_sample_aov_tile;
         auto_release_ptr<ISampleRenderer>       m_sample_renderer;
 
         // Members used for statistics.
@@ -564,37 +547,59 @@ namespace
 
         void on_tile_begin(
             const Frame&                        frame,
+            const size_t                        tile_x,
+            const size_t                        tile_y,
             Tile&                               tile,
             TileStack&                          aov_tiles)
         {
-            if (frame.are_diagnostic_aovs_enabled())
-            {
-                // 1 channel only for samples amount.
-                m_diagnostics.reset(new Tile(
-                    tile.get_width(), tile.get_height(), 1, PixelFormatFloat));
-            }
+            if (m_sample_aov_index != ~size_t(0))
+                m_sample_aov_tile = &frame.aovs().get_by_index(m_sample_aov_index)->get_image().tile(tile_x, tile_y);
         }
 
         void on_tile_end(
             const Frame&                        frame,
+            const size_t                        tile_x,
+            const size_t                        tile_y,
             Tile&                               tile,
             TileStack&                          aov_tiles)
         {
-            if (frame.are_diagnostic_aovs_enabled())
+            m_sample_aov_tile = nullptr;
+        }
+
+        void on_pixel_begin(
+            const Frame&                        frame,
+            const Vector2i&                     pi,
+            const Vector2i&                     pt)
+        {
+            m_invalid_sample_count = 0;
+            m_aov_accumulators.on_pixel_begin(pi);
+        }
+
+        void on_pixel_end(
+            const Frame&                        frame,
+            const Vector2i&                     pi,
+            const Vector2i&                     pt)
+        {
+            static const size_t MaxWarningsPerThread = 2;
+
+            m_aov_accumulators.on_pixel_end(pi);
+
+            // Warns the user for bad pixels.
+            if (m_invalid_sample_count > 0)
             {
-                const size_t width = tile.get_width();
-                const size_t height = tile.get_height();
-
-                for (size_t y = 0; y < height; ++y)
+                // We can't store the number of error per pixel because of adaptive rendering.
+                if (m_invalid_sample_count <= MaxWarningsPerThread)
                 {
-                    for (size_t x = 0; x < width; ++x)
-                    {
-                        Color<float, 1> values;
-                        m_diagnostics->get_pixel(x, y, values);
-
-                        if (m_samples_aov_index != ~size_t(0))
-                            aov_tiles.set_pixel(x, y, m_samples_aov_index, colorize_samples(values[0]));
-                    }
+                    RENDERER_LOG_WARNING(
+                        "%s sample%s at pixel (%d, %d) had nan, negative or infinite components and %s ignored.",
+                        pretty_uint(m_invalid_sample_count).c_str(),
+                        m_invalid_sample_count > 1 ? "s" : "",
+                        pi.x, pi.y,
+                        m_invalid_sample_count > 1 ? "were" : "was");
+                }
+                else if (m_invalid_sample_count == MaxWarningsPerThread + 1)
+                {
+                    RENDERER_LOG_WARNING("more invalid samples found, omitting warning messages for brevity.");
                 }
             }
         }
@@ -648,7 +653,6 @@ namespace
             const size_t                        batch_size,
             ShadingResultFrameBuffer*           framebuffer,
             ShadingResultFrameBuffer*           second_framebuffer,
-            const AABB2i&                       tile_bbox,
             const int                           tile_origin_x,
             const int                           tile_origin_y,
             const Frame&                        frame,
@@ -714,6 +718,8 @@ namespace
             const size_t                        batch_size,
             const size_t                        aov_count)
         {
+            on_pixel_begin(frame, pi, pt);
+
             SamplingContext::RNGType rng(pass_hash, instance);
             SamplingContext sampling_context(
                 rng,
@@ -748,6 +754,7 @@ namespace
                 // Ignore invalid samples.
                 if (!shading_result.is_valid())
                 {
+                    ++m_invalid_sample_count;
                     continue;
                 }
 
@@ -767,6 +774,8 @@ namespace
 
                 second = !second;
             }
+
+            on_pixel_end(frame, pi, pt);
         }
 
         // Split the given block in two.

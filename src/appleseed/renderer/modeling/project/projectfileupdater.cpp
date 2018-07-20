@@ -1802,12 +1802,12 @@ namespace
 
         void update() override
         {
-            update_diagnostic_option();
+            remove_diagnostic_option();
         }
 
       private:
-        // Merge frame::save_extra_aovs and PixelRenderer::enable_diagnostics.
-        void update_diagnostic_option()
+        // Remove pixel_renderer::enable_diagnostics and frame::save_extra_aovs.
+        void remove_diagnostic_option()
         {
             for (each<ConfigurationContainer> i = m_project.configurations(); i; ++i)
             {
@@ -1816,17 +1816,13 @@ namespace
                 if (root.dictionaries().exist("uniform_pixel_renderer"))
                 {
                     Dictionary& upr = root.dictionary("uniform_pixel_renderer");
-
-                    if (upr.strings().exist("enable_diagnostics"))
-                        upr.strings().remove("enable_diagnostics");
+                    upr.strings().remove("enable_diagnostics");
                 }
 
                 if (root.dictionaries().exist("adaptive_pixel_renderer"))
                 {
                     Dictionary& apr = root.dictionary("adaptive_pixel_renderer");
-
-                    if (apr.strings().exist("enable_diagnostics"))
-                        apr.strings().remove("enable_diagnostics");
+                    apr.strings().remove("enable_diagnostics");
                 }
             }
 
@@ -1836,8 +1832,7 @@ namespace
                 return;
 
             ParamArray& frame_params = frame->get_parameters();
-
-            move_if_exist(frame_params, "enable_diagnostic_aovs", "save_extra_aovs");
+            frame_params.strings().remove("save_extra_aovs");
         }
     };
 }

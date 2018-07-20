@@ -79,8 +79,7 @@ namespace
             ISampleRendererFactory*     factory,
             const ParamArray&           params,
             const size_t                thread_index)
-          : PixelRendererBase(frame, thread_index, params)
-          , m_params(params)
+          : m_params(params)
           , m_sample_renderer(factory->create(thread_index))
           , m_sample_count(m_params.m_samples)
           , m_sqrt_sample_count(round<int>(sqrt(static_cast<double>(m_params.m_samples))))
