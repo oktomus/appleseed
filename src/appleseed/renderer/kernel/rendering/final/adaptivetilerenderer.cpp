@@ -269,13 +269,32 @@ namespace
             assert(framebuffer);
 
             // Create the buffer into which we will accumulate every second samples.
-            ShadingResultFrameBuffer* second_framebuffer =
-                m_framebuffer_factory->create(
-                    frame,
-                    tile_x,
-                    tile_y,
-                    tile_bbox);
+            ShadingResultFrameBuffer* second_framebuffer = nullptr;
+
+            // If rendering multiple passes, the permanent buffer factory will return
+            // the same buffer so we must create a new one.
+            if (m_params.m_passes > 1)
+            {
+                second_framebuffer = new ShadingResultFrameBuffer(
+                    tile.get_width(),
+                    tile.get_height(),
+                    frame.aov_images().size(),
+                    tile_bbox,
+                    frame.get_filter());
+                second_framebuffer->copy_from(*framebuffer);
+            }
+            else
+            {
+                second_framebuffer =
+                    m_framebuffer_factory->create(
+                        frame,
+                        tile_x,
+                        tile_y,
+                        tile_bbox);
+            }
+
             assert(second_framebuffer);
+            assert(framebuffer != second_framebuffer);
 
             const size_t pixel_count = framebuffer->get_width() * framebuffer->get_height();
 
@@ -457,6 +476,9 @@ namespace
             // Release the framebuffer.
             m_framebuffer_factory->destroy(framebuffer);
 
+            // Delete the second buffer if it was created here.
+            delete second_framebuffer;
+
             // Inform the pixel renderer that we are done rendering the tile.
             on_tile_end(frame, tile_x, tile_y, tile, aov_tiles);
 
@@ -488,7 +510,8 @@ namespace
             const size_t                    m_max_samples;
             const float                     m_noise_threshold;
             float                           m_splitting_threshold;
-            float                           m_adaptiveness;
+            const float                     m_adaptiveness;
+            const size_t                    m_passes;
 
             explicit Parameters(const ParamArray& params)
               : m_sampling_mode(get_sampling_context_mode(params))
@@ -496,6 +519,7 @@ namespace
               , m_max_samples(params.get_required<size_t>("max_samples", 256))
               , m_noise_threshold(params.get_required<float>("noise_threshold", 5.0f))
               , m_adaptiveness(params.get_optional<float>("adaptiveness", 0.9f))
+              , m_passes(params.get_optional<size_t>("passes", 1))
             {
                 m_splitting_threshold = m_noise_threshold * 256.0f;
             }

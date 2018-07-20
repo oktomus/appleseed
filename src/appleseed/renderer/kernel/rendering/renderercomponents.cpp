@@ -340,7 +340,7 @@ bool RendererComponents::create_pixel_renderer_factory()
         }
 
         ParamArray params = get_child_and_inherit_globals(m_params, "uniform_pixel_renderer");
-        copy_param(params, m_params, "passes");
+        copy_param(params, get_child_and_inherit_globals(m_params, "generic_frame_renderer"), "passes");
         m_pixel_renderer_factory.reset(
             new UniformPixelRendererFactory(
                 m_frame,
@@ -425,12 +425,15 @@ bool RendererComponents::create_tile_renderer_factory()
             return false;
         }
 
+        ParamArray params = get_child_and_inherit_globals(m_params, "adaptive_tile_renderer");
+        copy_param(params, get_child_and_inherit_globals(m_params, "generic_frame_renderer"), "passes");
+
         m_tile_renderer_factory.reset(
             new AdaptiveTileRendererFactory(
                 m_frame,
                 m_sample_renderer_factory.get(),
                 m_shading_result_framebuffer_factory.get(),
-                get_child_and_inherit_globals(m_params, "adaptive_tile_renderer")));
+                params));
 
         return true;
     }
