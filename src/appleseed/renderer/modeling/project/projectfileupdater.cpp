@@ -1803,6 +1803,7 @@ namespace
         void update() override
         {
             remove_diagnostic_option();
+            update_passes_path();
         }
 
       private:
@@ -1833,6 +1834,29 @@ namespace
 
             ParamArray& frame_params = frame->get_parameters();
             frame_params.strings().remove("save_extra_aovs");
+        }
+
+        // Move generic_frame_renderer::passes to the root configuration.
+        void update_passes_path()
+        {
+            for (each<ConfigurationContainer> i = m_project.configurations(); i; ++i)
+            {
+                Dictionary& root = i->get_parameters();
+
+                if (root.dictionaries().exist("generic_frame_renderer"))
+                {
+                    Dictionary& gfr = root.dictionary("generic_frame_renderer");
+
+                    if (gfr.strings().exist("passes"))
+                        root.strings().insert("passes", gfr.get("passes"));
+
+                    gfr.strings().remove("passes");
+
+                    // Remove the dictionnary from the root if it's empty
+                    if (gfr.size() == 0)
+                        root.dictionaries().remove("generic_frame_renderer");
+                }
+            }
         }
     };
 }

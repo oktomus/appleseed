@@ -58,6 +58,7 @@
 
 // Standard headers.
 #include <string>
+#include <iostream>
 
 using namespace std;
 
@@ -75,6 +76,9 @@ namespace
         const ParamArray&   source,
         const char*         param_name)
     {
+        std::cout << "Copygin param " << param_name << "\n";
+        std::cout << "Exists ? " << source.strings().exist(param_name) << "\n";
+
         if (source.strings().exist(param_name))
             dest.strings().insert(param_name, source.strings().get(param_name));
     }
@@ -84,6 +88,7 @@ namespace
         const char*         name)
     {
         ParamArray child = source.child(name);
+        copy_param(child, source, "passes");
         copy_param(child, source, "spectrum_mode");
         copy_param(child, source, "sampling_mode");
         copy_param(child, source, "rendering_threads");
@@ -340,7 +345,7 @@ bool RendererComponents::create_pixel_renderer_factory()
         }
 
         ParamArray params = get_child_and_inherit_globals(m_params, "uniform_pixel_renderer");
-        copy_param(params, get_child_and_inherit_globals(m_params, "generic_frame_renderer"), "passes");
+        copy_param(params, m_params, "passes");
         m_pixel_renderer_factory.reset(
             new UniformPixelRendererFactory(
                 m_frame,
@@ -426,8 +431,7 @@ bool RendererComponents::create_tile_renderer_factory()
         }
 
         ParamArray params = get_child_and_inherit_globals(m_params, "adaptive_tile_renderer");
-        copy_param(params, get_child_and_inherit_globals(m_params, "generic_frame_renderer"), "passes");
-
+        copy_param(params, m_params, "passes");
         m_tile_renderer_factory.reset(
             new AdaptiveTileRendererFactory(
                 m_frame,

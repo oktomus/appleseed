@@ -255,6 +255,8 @@ auto_release_ptr<Configuration> BaseConfigurationFactory::create_base_final()
     parameters.insert("spectrum_mode", "rgb");
     parameters.insert("sampling_mode", "qmc");
 
+    parameters.insert("passes", 1);
+
     parameters.insert("frame_renderer", "generic");
     parameters.insert("tile_renderer", "generic");
 
@@ -278,6 +280,8 @@ auto_release_ptr<Configuration> BaseConfigurationFactory::create_base_interactiv
 
     parameters.insert("spectrum_mode", "rgb");
     parameters.insert("sampling_mode", "qmc");
+
+    parameters.insert("passes", 1);
 
     parameters.insert("frame_renderer", "progressive");
     parameters.insert("sample_generator", "generic");

@@ -460,7 +460,7 @@ namespace
             create_image_plane_sampling_general_settings(layout);
             create_image_plane_sampling_sampler_settings(layout);
 
-            create_direct_link("general.passes",                            "generic_frame_renderer.passes");
+            create_direct_link("general.passes",                            "passes");
 
             create_direct_link("uniform_sampler.samples",                   "uniform_pixel_renderer.samples");
             create_direct_link("uniform_sampler.force_antialiasing",        "uniform_pixel_renderer.force_antialiasing");
