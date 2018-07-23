@@ -86,8 +86,8 @@ namespace
             // Fetch the tile bounds (inclusive).
             m_tile_origin_x = static_cast<int>(tile_x * props.m_tile_width);
             m_tile_origin_y = static_cast<int>(tile_y * props.m_tile_height);
-            m_tile_end_x = static_cast<int>(m_tile_origin_x + m_tile->get_width() - 1);
-            m_tile_end_y = static_cast<int>(m_tile_origin_y + m_tile->get_height() - 1);
+            m_tile_end_x = static_cast<int>(m_tile_origin_x + m_tile->get_width());
+            m_tile_end_y = static_cast<int>(m_tile_origin_y + m_tile->get_height());
 
             m_samples.reserve(max_spp);
         }
@@ -150,8 +150,8 @@ namespace
             return
                 pi.x < m_tile_origin_x ||
                 pi.y < m_tile_origin_y ||
-                pi.x > m_tile_end_x ||
-                pi.y > m_tile_end_y;
+                pi.x >= m_tile_end_x ||
+                pi.y >= m_tile_end_y;
         }
     };
 

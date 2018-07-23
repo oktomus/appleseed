@@ -172,7 +172,7 @@ namespace
         {
             compute_tile_margins(frame, thread_index == 0);
 
-            m_sample_aov_index = frame.aovs().get_index("pixel_sample");
+            m_sample_aov_index = frame.aovs().get_index("pixel_sample_count");
 
             if (m_params.m_adaptiveness == 0.0f && thread_index == 0)
             {
@@ -249,15 +249,15 @@ namespace
             padded_tile_bbox.max.x = tile_bbox.max.x + m_margin_width;
             padded_tile_bbox.max.y = tile_bbox.max.y + m_margin_height;
 
+            // Inform the pixel renderer that we are about to render a tile.
+            on_tile_begin(frame, tile_x, tile_y, tile, aov_tiles);
+
             // Inform the AOV accumulators that we are about to render a tile.
             m_aov_accumulators.on_tile_begin(
                 frame,
                 tile_x,
                 tile_y,
                 m_params.m_max_samples);
-
-            // Inform the pixel renderer that we are about to render a tile.
-            on_tile_begin(frame, tile_x, tile_y, tile, aov_tiles);
 
             // Create the framebuffer into which we will accumulate the samples.
             ShadingResultFrameBuffer* framebuffer =
@@ -479,11 +479,11 @@ namespace
             // Delete the second buffer if it was created here.
             delete second_framebuffer;
 
-            // Inform the pixel renderer that we are done rendering the tile.
-            on_tile_end(frame, tile_x, tile_y, tile, aov_tiles);
-
             // Inform the AOV accumulators that we are done rendering a tile.
             m_aov_accumulators.on_tile_end(frame, tile_x, tile_y);
+
+            // Inform the pixel renderer that we are done rendering the tile.
+            on_tile_end(frame, tile_x, tile_y, tile, aov_tiles);
         }
 
         StatisticsVector get_statistics() const override

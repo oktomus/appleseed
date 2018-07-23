@@ -93,7 +93,7 @@ namespace
           , m_variation_aov_tile(nullptr)
         {
             m_variation_aov_index = frame.aovs().get_index("pixel_variation");
-            m_sample_aov_index = frame.aovs().get_index("pixel_sample");
+            m_sample_aov_index = frame.aovs().get_index("pixel_sample_count");
         }
 
         void release() override
@@ -285,7 +285,7 @@ namespace
 
                 if (m_sample_aov_tile)
                 {
-                    value[0] = trackers[0].get_size();
+                    value[0] = static_cast<float>(trackers[0].get_size());
 
                     m_sample_aov_tile->set_pixel(pt.x, pt.y, value);
                 }
