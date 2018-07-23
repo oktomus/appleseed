@@ -273,28 +273,19 @@ namespace
 
             // If rendering multiple passes, the permanent buffer factory will return
             // the same buffer so we must create a new one.
+            second_framebuffer = new ShadingResultFrameBuffer(
+                tile.get_width(),
+                tile.get_height(),
+                frame.aov_images().size(),
+                tile_bbox,
+                frame.get_filter());
+
             if (m_params.m_passes > 1)
-            {
-                second_framebuffer = new ShadingResultFrameBuffer(
-                    tile.get_width(),
-                    tile.get_height(),
-                    frame.aov_images().size(),
-                    tile_bbox,
-                    frame.get_filter());
                 second_framebuffer->copy_from(*framebuffer);
-            }
             else
-            {
-                second_framebuffer =
-                    m_framebuffer_factory->create(
-                        frame,
-                        tile_x,
-                        tile_y,
-                        tile_bbox);
-            }
+                second_framebuffer->clear();
 
             assert(second_framebuffer);
-            assert(framebuffer != second_framebuffer);
 
             const size_t pixel_count = framebuffer->get_width() * framebuffer->get_height();
 
@@ -476,7 +467,7 @@ namespace
             // Release the framebuffer.
             m_framebuffer_factory->destroy(framebuffer);
 
-            // Delete the second buffer if it was created here.
+            // Delete the accumulation buffer.
             delete second_framebuffer;
 
             // Inform the AOV accumulators that we are done rendering a tile.
