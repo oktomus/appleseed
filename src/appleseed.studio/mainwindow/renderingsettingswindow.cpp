@@ -495,7 +495,7 @@ namespace
             set_config(
                 config,
                 "pixel_renderer",
-                sampler == "adaptive_tile" ? "" : sampler.toLatin1().data());
+                sampler == "adaptive_tile" ? "" : sampler.toAscii().data());
 
             set_config(
                 config,

@@ -509,7 +509,7 @@ namespace
             const size_t                    m_min_samples;
             const size_t                    m_max_samples;
             const float                     m_noise_threshold;
-            float                           m_splitting_threshold;
+            const float                     m_splitting_threshold;
             const float                     m_adaptiveness;
             const size_t                    m_passes;
 
@@ -518,10 +518,10 @@ namespace
               , m_min_samples(params.get_required<size_t>("min_samples", 16))
               , m_max_samples(params.get_required<size_t>("max_samples", 256))
               , m_noise_threshold(params.get_required<float>("noise_threshold", 5.0f))
+              , m_splitting_threshold(m_noise_threshold * 256.0f)
               , m_adaptiveness(params.get_optional<float>("adaptiveness", 0.9f))
               , m_passes(params.get_optional<size_t>("passes", 1))
             {
-                m_splitting_threshold = m_noise_threshold * 256.0f;
             }
         };
 
