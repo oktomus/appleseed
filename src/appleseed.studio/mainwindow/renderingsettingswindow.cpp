@@ -634,9 +634,9 @@ namespace
         void load_general_sampler(const Configuration& config)
         {
             const string default_tr_value = m_params_metadata.get_path_optional<string>(
-                    "tile_renderer.default", "");
+                "tile_renderer.default", "");
             const string tr_value = get_config<string>(
-                    config, "tile_renderer", default_tr_value);
+                config, "tile_renderer", default_tr_value);
 
             if (tr_value == "adaptive")
             {
@@ -647,7 +647,7 @@ namespace
             const string default_pr_value = m_params_metadata.get_path_optional<string>(
                 "pixel_renderer.default", "");
             const string pr_value = get_config<string>(
-                    config, "pixel_renderer", default_pr_value);
+                config, "pixel_renderer", default_pr_value);
 
             m_image_plane_sampler_combo->setCurrentIndex(
                 pr_value == "adaptive" ? 1 : 0);

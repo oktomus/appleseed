@@ -79,12 +79,12 @@ using namespace std;
 namespace renderer
 {
 
-    //
-    // Reference:
-    //
-    // A Hierarchical Automatic Stopping Condition for Monte Carlo Global Illumination.
-    // https://jo.dreggn.org/home/2009_stopping.pdf
-    //
+//
+// Reference:
+//
+// A Hierarchical Automatic Stopping Condition for Monte Carlo Global Illumination.
+// https://jo.dreggn.org/home/2009_stopping.pdf
+//
 
 namespace
 {
@@ -95,7 +95,7 @@ namespace
     const size_t BlockMaxAllowedSize = 40;
     // Minimum allowed size for a block of pixel before splitting.
     const size_t BlockSplittingThreshold = BlockMinAllowedSize * 2;
-    // Threshold used to warn the user if blocks doesn't converge.
+    // Threshold used to warn the user if blocks don't converge.
     const int BlockConvergenceWarningThreshold = 70;
 
 
@@ -113,10 +113,10 @@ namespace
         float           m_block_error;
         bool            m_converged;
 
-        enum Axis
+        enum class Axis
         {
-            HORIZONTAL_X,
-            VERTICAL_Y,
+            Horizontal,
+            Vertical,
         };
 
         // Orientation of the block.
@@ -132,9 +132,9 @@ namespace
             assert(m_surface.is_valid());
 
             if (m_surface.extent(0) >= m_surface.extent(1))
-                m_main_axis = Axis::HORIZONTAL_X; // block is wider
+                m_main_axis = Axis::Horizontal; // block is wider
             else
-                m_main_axis = Axis::VERTICAL_Y; // block is taller
+                m_main_axis = Axis::Vertical; // block is taller
         }
     };
 
@@ -198,8 +198,7 @@ namespace
                 m_params.m_noise_threshold,
                 m_params.m_adaptiveness);
 
-            RENDERER_LOG_DEBUG(
-                "  splitting threshold           %f",
+            RENDERER_LOG_DEBUG("adaptive tile renderer splitting threshold: %f",
                 m_params.m_splitting_threshold);
 
             m_sample_renderer->print_settings();
@@ -387,7 +386,7 @@ namespace
                     }
                     else if (pb.m_block_error <= m_params.m_splitting_threshold)
                     {
-                        if (pb.m_main_axis == PixelBlock::Axis::HORIZONTAL_X
+                        if (pb.m_main_axis == PixelBlock::Axis::Horizontal
                                 && block_image_bb.extent(0) >= BlockSplittingThreshold)
                         {
                             split_pixel_block(
@@ -396,7 +395,7 @@ namespace
                                 static_cast<int>(block_image_bb.min.x)
                                 + static_cast<int>(block_image_bb.extent(0) * 0.5f - 0.5f));
                         }
-                        else if (pb.m_main_axis == PixelBlock::Axis::VERTICAL_Y
+                        else if (pb.m_main_axis == PixelBlock::Axis::Vertical
                                 && block_image_bb.extent(1) >= BlockSplittingThreshold)
                         {
                             split_pixel_block(
@@ -641,7 +640,7 @@ namespace
                 }
 
                 // Split the block if it's too big.
-                if (pb.m_main_axis == PixelBlock::Axis::HORIZONTAL_X
+                if (pb.m_main_axis == PixelBlock::Axis::Horizontal
                         && block_image_bb.extent(0) >= BlockSplittingThreshold)
                 {
                     split_pixel_block(
@@ -650,7 +649,7 @@ namespace
                         static_cast<int>(block_image_bb.min.x)
                         + static_cast<int>(block_image_bb.extent(0) * 0.5f - 0.5f));
                 }
-                else if (pb.m_main_axis == PixelBlock::Axis::VERTICAL_Y
+                else if (pb.m_main_axis == PixelBlock::Axis::Vertical
                         && block_image_bb.extent(1) >= BlockSplittingThreshold)
                 {
                     split_pixel_block(
@@ -801,7 +800,7 @@ namespace
         {
             AABB2i f_half = pb.m_surface, s_half = pb.m_surface;
 
-            if (pb.m_main_axis == PixelBlock::Axis::HORIZONTAL_X)
+            if (pb.m_main_axis == PixelBlock::Axis::Horizontal)
             {
                 assert(pb.m_surface.min.x < splitting_point);
                 assert(pb.m_surface.max.x > splitting_point);

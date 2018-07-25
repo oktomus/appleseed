@@ -164,7 +164,7 @@ namespace
 
         void on_pixel_end(const Vector2i& pi) override
         {
-            // Store a hint correspoding to the sample state in the tile.
+            // Store a hint corresponding to the sample state in the tile.
             if (pi.x >= m_tile_origin_x &&
                 pi.y >= m_tile_origin_y &&
                 pi.x < m_tile_end_x &&

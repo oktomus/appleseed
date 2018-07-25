@@ -167,6 +167,20 @@ namespace
                 copy_if_exist(dict, dest_key, dict, src_key);
         }
 
+        // Move a key from one dictionary to another at a given key.
+        static void move_if_exist(
+            Dictionary&         dest,
+            const char*         dest_key,
+            Dictionary&         src,
+            const char*         src_key)
+        {
+            if (src.strings().exist(src_key))
+            {
+                dest.strings().insert(dest_key, src.strings().get(src_key));
+                src.strings().remove(src_key);
+            }
+        }
+
         // Move a key from one dictionary to another at a given path.
         static void move_if_exist(
             ParamArray&         dest,
@@ -1810,9 +1824,9 @@ namespace
         // Remove pixel_renderer::enable_diagnostics and frame::save_extra_aovs.
         void remove_diagnostic_option()
         {
-            for (each<ConfigurationContainer> i = m_project.configurations(); i; ++i)
+            for (Configuration& config : m_project.configurations())
             {
-                Dictionary& root = i->get_parameters();
+                Dictionary& root = config.get_parameters();
 
                 if (root.dictionaries().exist("uniform_pixel_renderer"))
                 {
@@ -1839,21 +1853,18 @@ namespace
         // Move generic_frame_renderer::passes to the root configuration.
         void update_passes_path()
         {
-            for (each<ConfigurationContainer> i = m_project.configurations(); i; ++i)
+            for (Configuration& config : m_project.configurations())
             {
-                Dictionary& root = i->get_parameters();
+                Dictionary& root = config.get_parameters();
 
                 if (root.dictionaries().exist("generic_frame_renderer"))
                 {
                     Dictionary& gfr = root.dictionary("generic_frame_renderer");
 
-                    if (gfr.strings().exist("passes"))
-                        root.strings().insert("passes", gfr.get("passes"));
+                    move_if_exist(root, "passes", gfr, "passes");
 
-                    gfr.strings().remove("passes");
-
-                    // Remove the dictionnary from the root if it's empty
-                    if (gfr.size() == 0)
+                    // Remove the dictionnary from the root if it's empty.
+                    if (gfr.empty())
                         root.dictionaries().remove("generic_frame_renderer");
                 }
             }
