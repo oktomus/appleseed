@@ -1415,8 +1415,6 @@ set (renderer_modeling_aov_sources
     renderer/modeling/aov/denoiseraov.h
     renderer/modeling/aov/depthaov.cpp
     renderer/modeling/aov/depthaov.h
-    renderer/modeling/aov/diagnosticaov.cpp
-    renderer/modeling/aov/diagnosticaov.h
     renderer/modeling/aov/diffuseaov.cpp
     renderer/modeling/aov/diffuseaov.h
     renderer/modeling/aov/emissionaov.cpp
@@ -1424,12 +1422,18 @@ set (renderer_modeling_aov_sources
     renderer/modeling/aov/glossyaov.cpp
     renderer/modeling/aov/glossyaov.h
     renderer/modeling/aov/iaovfactory.h
+    renderer/modeling/aov/invalidsamplesaov.cpp
+    renderer/modeling/aov/invalidsamplesaov.h
     renderer/modeling/aov/normalaov.cpp
     renderer/modeling/aov/normalaov.h
     renderer/modeling/aov/npraovs.cpp
     renderer/modeling/aov/npraovs.h
+    renderer/modeling/aov/pixelsamplecountaov.cpp
+    renderer/modeling/aov/pixelsamplecountaov.h
     renderer/modeling/aov/pixeltimeaov.cpp
     renderer/modeling/aov/pixeltimeaov.h
+    renderer/modeling/aov/pixelvariationaov.cpp
+    renderer/modeling/aov/pixelvariationaov.h
     renderer/modeling/aov/positionaov.cpp
     renderer/modeling/aov/positionaov.h
     renderer/modeling/aov/uvaov.cpp
@@ -2014,6 +2018,8 @@ set (renderer_utility_sources
     renderer/utility/autodeskmax.h
     renderer/utility/bbox.h
     renderer/utility/dynamicspectrum.h
+    renderer/utility/filesystem.cpp
+    renderer/utility/filesystem.h
     renderer/utility/iostreamop.h
     renderer/utility/messagecontext.cpp
     renderer/utility/messagecontext.h

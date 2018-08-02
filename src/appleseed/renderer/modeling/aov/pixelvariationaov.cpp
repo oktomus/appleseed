@@ -5,7 +5,7 @@
 //
 // This software is released under the MIT license.
 //
-// Copyright (c) 2017-2018 Esteban Tovagliari, The appleseedhq Organization
+// Copyright (c) 2018 Kevin Masson, The appleseedhq Organization
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -27,16 +27,19 @@
 //
 
 // Interface header.
-#include "uvaov.h"
+#include "pixelvariationaov.h"
 
 // appleseed.renderer headers.
 #include "renderer/kernel/aov/aovaccumulator.h"
+#include "renderer/kernel/aov/imagestack.h"
 #include "renderer/kernel/rendering/pixelcontext.h"
 #include "renderer/kernel/shading/shadingpoint.h"
 #include "renderer/kernel/shading/shadingresult.h"
 #include "renderer/modeling/aov/aov.h"
+#include "renderer/modeling/frame/frame.h"
 
 // appleseed.foundation headers.
+#include "foundation/math/aabb.h"
 #include "foundation/image/color.h"
 #include "foundation/image/image.h"
 #include "foundation/image/tile.h"
@@ -46,6 +49,7 @@
 
 // Standard headers.
 #include <cstddef>
+#include <string>
 
 using namespace foundation;
 using namespace std;
@@ -55,119 +59,108 @@ namespace renderer
 
 namespace
 {
-    //
-    // UV AOV accumulator.
-    //
-
-    class UVAOVAccumulator
-      : public UnfilteredAOVAccumulator
-    {
-      public:
-        UVAOVAccumulator(Image& image)
-          : UnfilteredAOVAccumulator(image)
-        {
-        }
-
-        void write(
-            const PixelContext&         pixel_context,
-            const ShadingPoint&         shading_point,
-            const ShadingComponents&    shading_components,
-            const AOVComponents&        aov_components,
-            ShadingResult&              shading_result) override
-        {
-            const Vector2i& pi = pixel_context.get_pixel_coords();
-
-            // Ignore samples outside the tile.
-            if (outside_tile(pi))
-                return;
-
-            float* p = reinterpret_cast<float*>(
-                get_tile().pixel(pi.x - m_tile_bbox.min.x, pi.y - m_tile_bbox.min.y));
-
-            if (shading_point.hit_surface())
-            {
-                const Vector2f& uv = shading_point.get_uv(0);
-                p[0] = uv[0];
-                p[1] = uv[1];
-                p[2] = 0.0f;
-            }
-            else
-            {
-                p[0] = 0.0f;
-                p[1] = 0.0f;
-                p[2] = 0.0f;
-            }
-        }
-    };
-
 
     //
-    // UV AOV.
+    // Pixel Variation AOV.
     //
 
-    const char* Model = "uv_aov";
+    const char* Pixel_Variation_Model = "pixel_variation_aov";
 
-    class UVAOV
+    class PixelVariationAOV
       : public UnfilteredAOV
     {
       public:
-        explicit UVAOV(const ParamArray& params)
-          : UnfilteredAOV("uv", params)
+        explicit PixelVariationAOV(const ParamArray& params)
+          : UnfilteredAOV("pixel_variation", params)
         {
-        }
-
-        void release() override
-        {
-            delete this;
         }
 
         const char* get_model() const override
         {
-            return Model;
+            return Pixel_Variation_Model;
+        }
+
+        void post_process_image(
+            const Frame&    frame,
+            const AABB2u&   crop_window) override
+        {
+            static const Color3f Blue(0.0f, 0.0f, 1.0f);
+            static const Color3f Red(1.0f, 0.0f, 0.0f);
+
+            // Find the maximum variation.
+            float max_variation = 0.0f;
+
+            Color3f color;
+
+            for (size_t y = crop_window.min.y; y <= crop_window.max.y; ++y)
+            {
+                for (size_t x = crop_window.min.x; x <= crop_window.max.x; ++x)
+                {
+                    m_image->get_pixel(x, y, color);
+                    max_variation = max(color[0], max_variation);
+                }
+            }
+
+            if (max_variation == 0.0f)
+                return;
+
+            // Normalize.
+            for (size_t y = crop_window.min.y; y <= crop_window.max.y; ++y)
+            {
+                for (size_t x = crop_window.min.x; x <= crop_window.max.x; ++x)
+                {
+                    m_image->get_pixel(x, y, color);
+
+                    float c = fit(color[0], 0.0f, max_variation, 0.0f, 1.0f);
+
+                    color = lerp(Blue, Red, saturate(c));
+                    m_image->set_pixel(x, y, color);
+                }
+            }
         }
 
       protected:
         auto_release_ptr<AOVAccumulator> create_accumulator() const override
         {
             return auto_release_ptr<AOVAccumulator>(
-                new UVAOVAccumulator(get_image()));
+                new AOVAccumulator());
         }
     };
 }
 
 
 //
-// UVAOVFactory class implementation.
+// PixelVariationAOVFactory class implementation.
 //
 
-void UVAOVFactory::release()
+void PixelVariationAOVFactory::release()
 {
     delete this;
 }
 
-const char* UVAOVFactory::get_model() const
+const char* PixelVariationAOVFactory::get_model() const
 {
-    return Model;
+    return Pixel_Variation_Model;
 }
 
-Dictionary UVAOVFactory::get_model_metadata() const
+Dictionary PixelVariationAOVFactory::get_model_metadata() const
 {
     return
         Dictionary()
-            .insert("name", Model)
-            .insert("label", "UV");
+            .insert("name", Pixel_Variation_Model)
+            .insert("label", "Pixel Variation");
 }
 
-DictionaryArray UVAOVFactory::get_input_metadata() const
+DictionaryArray PixelVariationAOVFactory::get_input_metadata() const
 {
     DictionaryArray metadata;
     return metadata;
 }
 
-auto_release_ptr<AOV> UVAOVFactory::create(
+auto_release_ptr<AOV> PixelVariationAOVFactory::create(
     const ParamArray&   params) const
 {
-    return auto_release_ptr<AOV>(new UVAOV(params));
+    return auto_release_ptr<AOV>(new PixelVariationAOV(params));
 }
 
 }   // namespace renderer

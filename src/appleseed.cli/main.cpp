@@ -303,7 +303,7 @@ namespace
         if (g_cl.m_passes.is_set())
         {
             params.insert_path(
-                "generic_frame_renderer.passes",
+                "passes",
                 g_cl.m_passes.values()[0]);
         }
     }
@@ -336,6 +336,25 @@ namespace
             apply_visibility_command_line_options(assembly, show_filter, hide_filter);
     }
 
+    bool apply_checkpoint_command_line_option(Project& project)
+    {
+        if (g_cl.m_checkpoint.is_set())
+        {
+            if (!g_cl.m_output.is_set())
+            {
+                LOG_ERROR(g_logger, "ouput path must be specified when using checkpoints");
+                return false;
+            }
+
+            const char* file_path = g_cl.m_output.value().c_str();
+
+            set_frame_parameter(project, "checkpoint", "on");
+            set_frame_parameter(project, "checkpoint_path", file_path);
+        }
+
+        return true;
+    }
+
     void apply_parameter_command_line_options(ParamArray& params)
     {
         for (size_t i = 0; i < g_cl.m_params.values().size(); ++i)
@@ -353,7 +372,7 @@ namespace
         }
     }
 
-    void apply_command_line_options(Project& project, ParamArray& params)
+    bool apply_command_line_options(Project& project, ParamArray& params)
     {
         // Apply --disable-autosave option.
         if (g_cl.m_disable_autosave.is_set())
@@ -397,8 +416,14 @@ namespace
                 g_cl.m_hide_object_instances.is_set() ? g_cl.m_hide_object_instances.value() : "(?!)");     // match nothing
         }
 
+        // Apply --checkpoint option.
+        if (!apply_checkpoint_command_line_option(project))
+            return false;
+
         // Apply --parameter options.
         apply_parameter_command_line_options(params);
+
+        return true;
     }
 
 #if defined __APPLE__ || defined _WIN32
@@ -466,9 +491,7 @@ namespace
         params.merge(configuration->get_parameters());
 
         // Apply the command line options.
-        apply_command_line_options(project, params);
-
-        return true;
+        return apply_command_line_options(project, params);
     }
 
     bool is_progressive_render(const ParamArray& params)

@@ -144,6 +144,11 @@ CommandLineHandler::CommandLineHandler()
 #endif
 
     parser().add_option_handler(
+        &m_checkpoint
+            .add_name("--checkpoint")
+            .set_description("write a rendering checkpoint after each pass, or resume rendering from the last checkpoint"));
+
+    parser().add_option_handler(
         &m_send_to_mplay
             .add_name("--to-mplay")
             .set_description("send render to Houdini's mplay"));

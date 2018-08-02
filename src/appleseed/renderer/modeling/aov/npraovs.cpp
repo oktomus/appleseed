@@ -108,17 +108,7 @@ namespace
             return NPRShadingModel;
         }
 
-        size_t get_channel_count() const override
-        {
-            return 4;
-        }
-
-        const char** get_channel_names() const override
-        {
-            static const char* ChannelNames[] = {"R", "G", "B", "A"};
-            return ChannelNames;
-        }
-
+      protected:
         auto_release_ptr<AOVAccumulator> create_accumulator() const override
         {
             return auto_release_ptr<AOVAccumulator>(
@@ -181,17 +171,7 @@ namespace
             return NPRContourModel;
         }
 
-        size_t get_channel_count() const override
-        {
-            return 4;
-        }
-
-        const char** get_channel_names() const override
-        {
-            static const char* ChannelNames[] = {"R", "G", "B", "A"};
-            return ChannelNames;
-        }
-
+      protected:
         auto_release_ptr<AOVAccumulator> create_accumulator() const override
         {
             return auto_release_ptr<AOVAccumulator>(

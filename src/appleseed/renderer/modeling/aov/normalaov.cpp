@@ -63,8 +63,8 @@ namespace
       : public UnfilteredAOVAccumulator
     {
       public:
-        NormalAOVAccumulator(Image& image, Image& filter_image)
-          : UnfilteredAOVAccumulator(image, filter_image)
+        NormalAOVAccumulator(Image& image)
+          : UnfilteredAOVAccumulator(image)
         {
         }
 
@@ -82,32 +82,20 @@ namespace
                 return;
 
             float* p = reinterpret_cast<float*>(
-                get_tile().pixel(pi.x - m_tile_origin_x, pi.y - m_tile_origin_y));
+                get_tile().pixel(pi.x - m_tile_bbox.min.x, pi.y - m_tile_bbox.min.y));
 
-            float* f = reinterpret_cast<float*>(
-                get_filter_tile().pixel(pi.x - m_tile_origin_x, pi.y - m_tile_origin_y));
-
-            const float min_sample_square_distance = *f;
-            const float sample_square_distance =
-                square_distance_to_pixel_center(pixel_context.get_sample_position());
-
-            if (sample_square_distance < min_sample_square_distance)
+            if (shading_point.hit_surface())
             {
-                if (shading_point.hit_surface())
-                {
-                    const Vector3d& n = shading_point.get_shading_normal();
-                    p[0] = static_cast<float>(n[0]) * 0.5f + 0.5f;
-                    p[1] = static_cast<float>(n[1]) * 0.5f + 0.5f;
-                    p[2] = static_cast<float>(n[2]) * 0.5f + 0.5f;
-                    *f = sample_square_distance;
-                }
-                else
-                {
-                    p[0] = 0.5f;
-                    p[1] = 0.5f;
-                    p[2] = 0.5f;
-                    *f = sample_square_distance;
-                }
+                const Vector3d& n = shading_point.get_shading_normal();
+                p[0] = static_cast<float>(n[0]) * 0.5f + 0.5f;
+                p[1] = static_cast<float>(n[1]) * 0.5f + 0.5f;
+                p[2] = static_cast<float>(n[2]) * 0.5f + 0.5f;
+            }
+            else
+            {
+                p[0] = 0.5f;
+                p[1] = 0.5f;
+                p[2] = 0.5f;
             }
         }
     };
@@ -138,27 +126,32 @@ namespace
             return Model;
         }
 
-        size_t get_channel_count() const override
-        {
-            return 3;
-        }
-
-        const char** get_channel_names() const override
-        {
-            static const char* ChannelNames[] = {"R", "G", "B"};
-            return ChannelNames;
-        }
-
         void clear_image() override
         {
             m_image->clear(Color3f(0.5f, 0.5f, 0.5f));
-            m_filter_image->clear(Color<float, 1>(numeric_limits<float>::max()));
+        }
+
+      protected:
+        void create_image(
+            const size_t        canvas_width,
+            const size_t        canvas_height,
+            const size_t        tile_width,
+            const size_t        tile_height,
+            ImageStack&         aov_images) override
+        {
+            UnfilteredAOV::create_image(
+                canvas_width,
+                canvas_height,
+                tile_width,
+                tile_height,
+                aov_images);
+            clear_image();
         }
 
         auto_release_ptr<AOVAccumulator> create_accumulator() const override
         {
             return auto_release_ptr<AOVAccumulator>(
-                new NormalAOVAccumulator(get_image(), *m_filter_image));
+                new NormalAOVAccumulator(get_image()));
         }
     };
 }

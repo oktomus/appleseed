@@ -5,8 +5,7 @@
 //
 // This software is released under the MIT license.
 //
-// Copyright (c) 2010-2013 Francois Beaune, Jupiter Jazz Limited
-// Copyright (c) 2014-2018 Francois Beaune, The appleseedhq Organization
+// Copyright (c) 2018 Kevin Masson, The appleseedhq Organization
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -27,26 +26,39 @@
 // THE SOFTWARE.
 //
 
-#ifndef APPLESEED_RENDERER_API_AOV_H
-#define APPLESEED_RENDERER_API_AOV_H
+// Interface header.
+#include "filesystem.h"
 
-// API headers.
-#include "renderer/kernel/aov/imagestack.h"
-#include "renderer/modeling/aov/aov.h"
-#include "renderer/modeling/aov/aovcontainer.h"
-#include "renderer/modeling/aov/aovfactoryregistrar.h"
-#include "renderer/modeling/aov/aovtraits.h"
-#include "renderer/modeling/aov/depthaov.h"
-#include "renderer/modeling/aov/diffuseaov.h"
-#include "renderer/modeling/aov/emissionaov.h"
-#include "renderer/modeling/aov/glossyaov.h"
-#include "renderer/modeling/aov/iaovfactory.h"
-#include "renderer/modeling/aov/invalidsamplesaov.h"
-#include "renderer/modeling/aov/normalaov.h"
-#include "renderer/modeling/aov/pixelsamplecountaov.h"
-#include "renderer/modeling/aov/pixeltimeaov.h"
-#include "renderer/modeling/aov/pixelvariationaov.h"
-#include "renderer/modeling/aov/positionaov.h"
-#include "renderer/modeling/aov/uvaov.h"
+// appleseed.renderer headers.
+#include "renderer/global/globallogger.h"
 
-#endif  // !APPLESEED_RENDERER_API_AOV_H
+namespace bf = boost::filesystem;
+namespace bsys = boost::system;
+
+namespace renderer
+{
+
+void create_parent_directories(const bf::path& file_path)
+{
+    const bf::path parent_path = file_path.parent_path();
+
+    if (!parent_path.empty() && !bf::exists(parent_path))
+    {
+        bsys::error_code ec;
+        if (!bf::create_directories(parent_path, ec))
+        {
+            RENDERER_LOG_ERROR(
+                "could not create directory %s: %s",
+                parent_path.c_str(),
+                ec.message().c_str());
+        }
+    }
+}
+
+void create_parent_directories(const char* file_path)
+{
+    create_parent_directories(bf::path(file_path));
+}
+
+}       // namespace renderer
+

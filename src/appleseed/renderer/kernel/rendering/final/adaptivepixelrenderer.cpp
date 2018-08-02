@@ -282,23 +282,20 @@ namespace
             if ((m_sample_aov_tile || m_variation_aov_tile) && tile_bbox.contains(pt))
             {
                 Color3f value(0.0f, 0.0f, 0.0f);
+                m_sample_aov_tile->get_pixel(pt.x, pt.y, value);
 
                 if (m_sample_aov_tile)
                 {
-                    value[0] = static_cast<float>(trackers[0].get_size());
-
+                    value[0] += static_cast<float>(trackers[0].get_size());
                     m_sample_aov_tile->set_pixel(pt.x, pt.y, value);
                 }
 
                 if (m_variation_aov_tile)
                 {
-                    value[0] =
-                        saturate(
-                            max(
-                                trackers[0].get_variation(),
-                                trackers[1].get_variation(),
-                                trackers[2].get_variation())
-                            / m_params.m_max_variation);
+                    value[0] += max(
+                        trackers[0].get_variation(),
+                        trackers[1].get_variation(),
+                        trackers[2].get_variation());
 
                     m_variation_aov_tile->set_pixel(pt.x, pt.y, value);
                 }

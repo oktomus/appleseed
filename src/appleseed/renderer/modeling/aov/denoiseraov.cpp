@@ -276,7 +276,6 @@ struct DenoiserAOV::Impl
     Deepimf m_covariance_accum;
 
     Deepimf m_histograms;
-    Deepimf m_covariances;
 };
 
 DenoiserAOV::DenoiserAOV(
@@ -388,6 +387,26 @@ Deepimf& DenoiserAOV::histograms_image()
     return impl->m_histograms;
 }
 
+const Deepimf& DenoiserAOV::covariance_image() const
+{
+    return impl->m_covariance_accum;
+}
+
+Deepimf& DenoiserAOV::covariance_image()
+{
+    return impl->m_covariance_accum;
+}
+
+const Deepimf& DenoiserAOV::sum_image() const
+{
+    return impl->m_sum_accum;
+}
+
+Deepimf& DenoiserAOV::sum_image()
+{
+    return impl->m_sum_accum;
+}
+
 void DenoiserAOV::extract_num_samples_image(bcd::Deepimf& num_samples) const
 {
     const int w = impl->m_histograms.getWidth();
@@ -483,6 +502,7 @@ bool DenoiserAOV::write_images(const char* file_path) const
 
     return result;
 }
+
 
 //
 // DenoiserAOVFactory class implementation.

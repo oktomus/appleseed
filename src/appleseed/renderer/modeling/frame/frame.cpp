@@ -35,16 +35,21 @@
 #include "renderer/kernel/aov/aovsettings.h"
 #include "renderer/kernel/aov/imagestack.h"
 #include "renderer/kernel/denoising/denoiser.h"
+#include "renderer/kernel/rendering/permanentshadingresultframebufferfactory.h"
+#include "renderer/kernel/rendering/shadingresultframebuffer.h"
 #include "renderer/modeling/aov/aov.h"
 #include "renderer/modeling/aov/aovfactoryregistrar.h"
 #include "renderer/modeling/aov/denoiseraov.h"
 #include "renderer/modeling/aov/iaovfactory.h"
 #include "renderer/modeling/postprocessingstage/postprocessingstage.h"
+#include "renderer/utility/bbox.h"
+#include "renderer/utility/filesystem.h"
 #include "renderer/utility/paramarray.h"
 
 // appleseed.foundation headers.
 #include "foundation/image/color.h"
 #include "foundation/image/genericimagefilewriter.h"
+#include "foundation/image/genericprogressiveimagefilereader.h"
 #include "foundation/image/image.h"
 #include "foundation/image/imageattributes.h"
 #include "foundation/image/pixel.h"
@@ -62,11 +67,17 @@
 // Boost headers.
 #include "boost/filesystem.hpp"
 
+// BCD headers.
+#include "bcd/DeepImage.h"
+#include "bcd/ImageIO.h"
+
 // Standard headers.
 #include <algorithm>
 #include <exception>
 #include <memory>
 #include <string>
+#include <tuple>
+#include <vector>
 
 using namespace bcd;
 using namespace foundation;
@@ -104,6 +115,13 @@ struct Frame::Impl
     AABB2u                          m_crop_window;
     ParamArray                      m_render_info;
     DenoisingMode                   m_denoising_mode;
+    bool                            m_checkpoint;
+    string                          m_checkpoint_path;
+
+    // When resuming a render, first pass index should be
+    // the number of the resumed render's pass + 1.
+    // Otherwise it's 0.
+    size_t                          m_initial_pass;
 
     // Child entities.
     AOVContainer                    m_aovs;
@@ -190,6 +208,8 @@ Frame::Frame(
     }
     else
         impl->m_denoiser_aov = nullptr;
+
+    impl->m_initial_pass = 0;
 }
 
 Frame::~Frame()
@@ -214,7 +234,8 @@ void Frame::print_settings()
         "  filter                        %s\n"
         "  filter size                   %f\n"
         "  crop window                   (%s, %s)-(%s, %s)\n"
-        "  denoising mode                %s",
+        "  denoising mode                %s\n"
+        "  checkpoint                    %s",
         get_path().c_str(),
         camera_name ? camera_name : "none",
         pretty_uint(impl->m_frame_width).c_str(),
@@ -228,7 +249,8 @@ void Frame::print_settings()
         pretty_uint(impl->m_crop_window.max[0]).c_str(),
         pretty_uint(impl->m_crop_window.max[1]).c_str(),
         impl->m_denoising_mode == DenoisingMode::Off ? "off" :
-        impl->m_denoising_mode == DenoisingMode::WriteOutputs ? "write outputs" : "denoise");
+        impl->m_denoising_mode == DenoisingMode::WriteOutputs ? "write outputs" : "denoise",
+        impl->m_checkpoint ? impl->m_checkpoint_path.c_str() : "off");
 }
 
 AOVContainer& Frame::aovs() const
@@ -270,14 +292,14 @@ ImageStack& Frame::aov_images() const
     return *impl->m_aov_images;
 }
 
-const AOVContainer& Frame::internal_aovs() const
-{
-    return impl->m_internal_aovs;
-}
-
 const Filter2f& Frame::get_filter() const
 {
     return *impl->m_filter.get();
+}
+
+size_t Frame::get_initial_pass() const
+{
+    return impl->m_initial_pass;
 }
 
 void Frame::reset_crop_window()
@@ -330,10 +352,10 @@ void Frame::update_asset_paths(const StringDictionary& mappings)
 }
 
 bool Frame::on_frame_begin(
-    const Project&          project,
-    const BaseGroup*        parent,
-    OnFrameBeginRecorder&   recorder,
-    IAbortSwitch*           abort_switch)
+    const Project&                                  project,
+    const BaseGroup*                                parent,
+    OnFrameBeginRecorder&                           recorder,
+    IAbortSwitch*                                   abort_switch)
 {
     for (AOV& aov : aovs())
     {
@@ -359,10 +381,10 @@ bool Frame::on_frame_begin(
 void Frame::post_process_aov_images() const
 {
     for (size_t i = 0, e = aovs().size(); i < e; ++i)
-        aovs().get_by_index(i)->post_process_image(get_crop_window());
+        aovs().get_by_index(i)->post_process_image(*this, get_crop_window());
 
     for (size_t i = 0, e = internal_aovs().size(); i < e; ++i)
-        internal_aovs().get_by_index(i)->post_process_image(get_crop_window());
+        internal_aovs().get_by_index(i)->post_process_image(*this, get_crop_window());
 }
 
 ParamArray& Frame::render_info()
@@ -376,8 +398,8 @@ Frame::DenoisingMode Frame::get_denoising_mode() const
 }
 
 void Frame::denoise(
-    const size_t        thread_count,
-    IAbortSwitch*       abort_switch) const
+    const size_t                                thread_count,
+    IAbortSwitch*                               abort_switch) const
 {
     DenoiserOptions options;
 
@@ -452,27 +474,485 @@ void Frame::denoise(
 
 namespace
 {
-    void create_parent_directories(const bf::path& file_path)
-    {
-        const bf::path parent_path = file_path.parent_path();
 
-        if (!parent_path.empty() && !bf::exists(parent_path))
+    typedef vector<tuple<string, CanvasProperties, ImageAttributes>> CheckpointProperties;
+
+    //
+    // Interface used to save the rendering buffer in checkpoints.
+    //
+
+    class ShadingBufferCanvas
+      : public ICanvas
+    {
+      public:
+        ShadingBufferCanvas(
+            const Frame&                                frame,
+            PermanentShadingResultFrameBufferFactory*   buffer_factory)
+          : m_frame(frame)
+          , m_buffer_factory(buffer_factory)
+          , m_props(
+                m_frame.image().properties().m_canvas_width,
+                m_frame.image().properties().m_canvas_height,
+                m_frame.image().properties().m_tile_width,
+                m_frame.image().properties().m_tile_height,
+                (1 + m_frame.aov_images().size()) * 4 + 1,
+                PixelFormatFloat)
         {
-            bsys::error_code ec;
-            if (!bf::create_directories(parent_path, ec))
+            assert(buffer_factory);
+        }
+
+        const CanvasProperties& properties() const override
+        {
+            return m_props;
+        }
+
+        Tile& tile(
+            const size_t            tile_x,
+            const size_t            tile_y) override
+        {
+            ShadingResultFrameBuffer* tile_buffer = m_buffer_factory->create(
+                m_frame,
+                tile_x,
+                tile_y,
+                get_tile_bbox(tile_x, tile_y));
+
+            assert(tile_buffer);
+            return *tile_buffer;
+        }
+
+        const Tile& tile(
+            const size_t            tile_x,
+            const size_t            tile_y) const override
+        {
+            const ShadingResultFrameBuffer* tile_buffer = m_buffer_factory->create(
+                m_frame,
+                tile_x,
+                tile_y,
+                get_tile_bbox(tile_x, tile_y));
+
+            assert(tile_buffer);
+            return *tile_buffer;
+        }
+
+      private:
+        const Frame&                                m_frame;
+        PermanentShadingResultFrameBufferFactory*   m_buffer_factory;
+        const CanvasProperties                      m_props;
+
+        AABB2i get_tile_bbox(
+            const size_t            tile_x,
+            const size_t            tile_y) const
+        {
+            const Image& image = m_frame.image();
+            const CanvasProperties& props = image.properties();
+
+            // Compute the image space bounding box of the tile.
+            const int tile_origin_x = static_cast<int>(
+                props.m_tile_width * tile_x);
+            const int tile_origin_y = static_cast<int>(
+                props.m_tile_height * tile_y);
+
+            const Tile& frame_tile = image.tile(tile_x, tile_y);
+
+            // Compute the tile space bounding box of the pixels to render.
+            return compute_tile_space_bbox(
+                frame_tile,
+                tile_origin_x,
+                tile_origin_y,
+                m_frame.get_crop_window());
+        }
+
+    };
+
+    void get_denoiser_checkpoint_paths(
+        const string&                   checkpoint_path,
+        string&                         hist_path,
+        string&                         cov_path,
+        string&                         sum_path)
+    {
+        const bf::path boost_file_path(checkpoint_path);
+        const bf::path directory = boost_file_path.parent_path();
+        const string base_file_name = boost_file_path.stem().string() + ".denoiser";
+        const string extension = boost_file_path.extension().string();
+
+        const string hist_file_name = base_file_name + ".hist" + extension;
+        hist_path = (directory / hist_file_name).string();
+
+        const string cov_file_name = base_file_name + ".cov" + extension;
+        cov_path = (directory / cov_file_name).string();
+
+        const string sum_file_name = base_file_name + ".sum" + extension;
+        sum_path = (directory / sum_file_name).string();
+    }
+
+    bool is_checkpoint_compatible(
+        const string&                   checkpoint_path,
+        const Frame&                    frame,
+        const CheckpointProperties&     checkpoint_props)
+    {
+        const Image& frame_image = frame.image();
+        const CanvasProperties& frame_props = frame_image.properties();
+        const CanvasProperties& beauty_props = get<1>(checkpoint_props[0]);
+        const ImageAttributes& exr_attributes = get<2>(checkpoint_props[0]);
+        const string initial_layer_name = get<0>(checkpoint_props[0]);
+
+        // Check for atttributes.
+        if (!exr_attributes.exist("appleseed:LastPass"))
+        {
+            RENDERER_LOG_ERROR("incorrect checkpoint: some attributes are missing.");
+            return false;
+        }
+
+        // Check for beauty layer.
+        if (initial_layer_name != "beauty")
+        {
+            RENDERER_LOG_ERROR("incorrect checkpoint: beauty layer is missing.");
+            return false;
+        }
+
+        // Check for weight layer.
+        const string second_layer_name = get<0>(checkpoint_props[1]);
+        if (second_layer_name != "appleseed:RenderingBuffer")
+        {
+            RENDERER_LOG_ERROR("incorrect checkpoint: rendering buffer layer is missing.");
+            return false;
+        }
+
+        // Check that weight layer has correct amount of channel
+        const size_t expect_channel_count = (1 + frame.aov_images().size()) * 4 + 1;
+        if (get<1>(checkpoint_props[1]).m_channel_count != expect_channel_count)
+        {
+            RENDERER_LOG_ERROR("incorrect checkpoint: the shading buffer doesn't contain the correct number of channels.");
+            return false;
+        }
+
+        // Check canvas properties.
+        if (frame_props.m_canvas_width != beauty_props.m_canvas_width ||
+            frame_props.m_canvas_height != beauty_props.m_canvas_height ||
+            frame_props.m_tile_width != beauty_props.m_tile_width ||
+            frame_props.m_tile_height != beauty_props.m_tile_height ||
+            frame_props.m_channel_count != beauty_props.m_channel_count ||
+            frame_props.m_pixel_format != beauty_props.m_pixel_format)
+        {
+            RENDERER_LOG_ERROR("incorrect checkpoint: the beauty layer properties doesn't match the renderer properties.");
+            return false;
+        }
+
+        // Check if aovs are here.
+        if (checkpoint_props.size() < frame.aovs().size() + 2)
+        {
+            RENDERER_LOG_ERROR("incorrect checkpoint: some aovs are missing.");
+            return false;
+        }
+
+        // Check if denoising is enabled and pass exists.
+        if (frame.get_denoising_mode() != Frame::DenoisingMode::Off)
+        {
+            string hist_file_path, cov_file_path, sum_file_path;
+            get_denoiser_checkpoint_paths(
+                checkpoint_path,
+                hist_file_path,
+                cov_file_path,
+                sum_file_path);
+
+            if (!bf::exists(bf::path(hist_file_path.c_str())) ||
+                !bf::exists(bf::path(cov_file_path.c_str())) ||
+                !bf::exists(bf::path(sum_file_path.c_str())))
             {
-                RENDERER_LOG_ERROR(
-                    "could not create directory %s: %s",
-                    parent_path.c_str(),
-                    ec.message().c_str());
+                RENDERER_LOG_ERROR("cannot load denoiser's checkpoint from disk because one or several files are missing.");
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    bool load_denoiser_checkpoint(
+        const string&                   checkpoint_path,
+        DenoiserAOV*                    denoiser_aov)
+    {
+        // todo: reload denoiser checkpoint from the same file.
+        Deepimf& histograms_image = denoiser_aov->histograms_image();
+        Deepimf& covariance_image = denoiser_aov->covariance_image();
+        Deepimf& sum_image = denoiser_aov->sum_image();
+
+        string hist_file_path, cov_file_path, sum_file_path;
+        get_denoiser_checkpoint_paths(checkpoint_path, hist_file_path, cov_file_path, sum_file_path);
+
+        // Load histograms.
+        bool result = ImageIO::loadMultiChannelsEXR(histograms_image, hist_file_path.c_str());
+        // Load covariance accumulator.
+        result = result && ImageIO::loadMultiChannelsEXR(covariance_image, cov_file_path.c_str());
+        // Load sum accumulator.
+        result = result && ImageIO::loadMultiChannelsEXR(sum_image, sum_file_path.c_str());
+
+        if (!result)
+            RENDERER_LOG_ERROR("could not load denoiser checkpoint.");
+
+        return result;
+    }
+
+    void save_denoiser_checkpoint(
+        const string&                   checkpoint_path,
+        const DenoiserAOV*              denoiser_aov)
+    {
+        // todo: save denoiser checkpoint in the same file.
+        const Deepimf& histograms_image = denoiser_aov->histograms_image();
+        const Deepimf& covariance_image = denoiser_aov->covariance_image();
+        const Deepimf& sum_image = denoiser_aov->sum_image();
+
+        string hist_file_path, cov_file_path, sum_file_path;
+        get_denoiser_checkpoint_paths(checkpoint_path, hist_file_path, cov_file_path, sum_file_path);
+
+        // Add histograms layer.
+        bool result = ImageIO::writeMultiChannelsEXR(histograms_image, hist_file_path.c_str());
+        // Add covariances layer.
+        result = result && ImageIO::writeMultiChannelsEXR(covariance_image, cov_file_path.c_str());
+        // Add sum layer.
+        result = result && ImageIO::writeMultiChannelsEXR(sum_image, sum_file_path.c_str());
+
+        if (!result)
+            RENDERER_LOG_ERROR("could not save denoiser checkpoint.");
+    }
+
+}
+
+bool Frame::load_checkpoint(PermanentShadingResultFrameBufferFactory* buffer_factory)
+{
+    if  (!impl->m_checkpoint)
+        return true;
+
+    bf::path bf_path(impl->m_checkpoint_path.c_str());
+
+    // Check the extension, only .exr is allowed.
+    string extension = lower_case(bf_path.extension().string());
+    if (extension != ".exr")
+    {
+        RENDERER_LOG_ERROR("checkpoint file must be an \".exr\" file");
+        return false;
+    }
+
+    // Check if the file exists.
+    if (!bf::exists(bf_path))
+    {
+        RENDERER_LOG_WARNING("no checkpoint found, starting a new render");
+        return true;
+    }
+
+    // Open the file.
+    GenericProgressiveImageFileReader reader;
+    reader.open(impl->m_checkpoint_path.c_str());
+
+    // First, read layers name and properties.
+    CheckpointProperties checkpoint_props;
+
+    size_t layer_index = 0;
+    while (reader.choose_subimage(layer_index))
+    {
+        CanvasProperties layer_canvas_props;
+        ImageAttributes layer_attributes;
+
+        reader.read_canvas_properties(layer_canvas_props);
+        reader.read_image_attributes(layer_attributes);
+
+        const string layer_name =
+            layer_attributes.exist("name")
+                ? layer_attributes.get<string>("name")
+                : "undefined";
+
+        checkpoint_props.push_back(
+            make_tuple(
+                layer_name,
+                layer_canvas_props,
+                layer_attributes));
+
+        ++layer_index;
+    }
+
+    // Check checkpoint's compatibility.
+    if (!is_checkpoint_compatible(impl->m_checkpoint_path, *this, checkpoint_props))
+    {
+        reader.close();
+        return false;
+    }
+
+    const size_t start_pass = get<2>(checkpoint_props[0]).get<size_t>("appleseed:LastPass") + 1;
+
+    // Interface the shading buffer in a canvas.
+    ShadingBufferCanvas shading_canvas(*this, buffer_factory);
+
+    // Load tiles from the checkpoint.
+    const CanvasProperties& beauty_props = get<1>(checkpoint_props[0]);
+
+    for (size_t tile_y = 0; tile_y < beauty_props.m_tile_count_y; ++tile_y)
+    {
+        for (size_t tile_x = 0; tile_x < beauty_props.m_tile_count_x; ++tile_x)
+        {
+            // Read shading buffer.
+            reader.choose_subimage(1);
+            Tile& shading_tile = shading_canvas.tile(tile_x, tile_y);
+            reader.read_tile(tile_x, tile_y, &shading_tile);
+
+            // No need to read beauty and filtered AOVs because they
+            // are in the shading buffer.
+
+            // Read Unfiltered AOV layers.
+            vector<unique_ptr<Tile>> aov_tiles;
+            vector<const float*> aov_ptrs;
+            for (size_t i = 0; i < aovs().size(); ++i)
+            {
+                UnfilteredAOV* aov = dynamic_cast<UnfilteredAOV*>(
+                    aovs().get_by_index(i));
+
+                if (aov == nullptr)
+                    continue;
+
+                const string aov_name = aov->get_name();
+
+                // Search layer index in the file.
+                size_t subimage_index(~0);
+                for (size_t s = 0; s < checkpoint_props.size(); ++s)
+                {
+                    if (get<0>(checkpoint_props[s]) == aov_name)
+                    {
+                        subimage_index = s;
+                        break;
+                    }
+                }
+
+                assert(subimage_index != size_t(~0));
+
+                Image& aov_image = aov->get_image();
+                Tile& aov_tile = aov_image.tile(tile_x, tile_y);
+                reader.choose_subimage(subimage_index);
+                reader.read_tile(tile_x, tile_y, &aov_tile);
             }
         }
     }
 
-    void create_parent_directories(const char* file_path)
+    reader.close();
+
+    // Load internal AOVs (from external files).
+    for (size_t i = 0, e = internal_aovs().size(); i < e; ++i)
     {
-        create_parent_directories(bf::path(file_path));
+        AOV* aov = internal_aovs().get_by_index(i);
+
+        DenoiserAOV* denoiser_aov = dynamic_cast<DenoiserAOV*>(aov);
+
+        // Save denoiser checkpoint.
+        if (denoiser_aov != nullptr)
+        {
+            if (!load_denoiser_checkpoint(impl->m_checkpoint_path, denoiser_aov))
+                return false;
+        }
     }
+
+    RENDERER_LOG_INFO("opened checkpoint resuming at pass %s",
+        pretty_uint(start_pass).c_str());
+
+    impl->m_initial_pass = start_pass;
+
+    return true;
+}
+
+void Frame::save_checkpoint(
+    PermanentShadingResultFrameBufferFactory*   buffer_factory,
+    const size_t                                pass) const
+{
+    if (!impl->m_checkpoint)
+        return;
+
+    create_parent_directories(impl->m_checkpoint_path.c_str());
+
+    GenericImageFileWriter writer(impl->m_checkpoint_path.c_str());
+
+    ImageAttributes image_attributes = ImageAttributes::create_default_attributes();
+    image_attributes.insert("appleseed:LastPass", pass);
+
+    // Create layers.
+    // Buffer containing pixels' weight.
+    ShadingBufferCanvas weight_canvas(*this, buffer_factory);
+
+    // Create channel names.
+    const size_t shading_channel_count = weight_canvas.properties().m_channel_count;
+    vector<string> shading_channel_names; // for shading buffer
+    vector<const char *> shading_channel_names_cr;
+
+    static const string channel_name_prefix = "channel_";
+    for (size_t i = 0; i < shading_channel_count; ++i)
+    {
+        shading_channel_names.push_back(channel_name_prefix + pad_left(to_string(i + 1), '0', 4));
+        shading_channel_names_cr.push_back(shading_channel_names[i].c_str());
+    }
+
+    assert(shading_channel_names.size() == shading_channel_count);
+
+    // Add layers in the file.
+    writer.append_image(&image());
+    image_attributes.insert("image_name", "beauty");
+    writer.set_image_attributes(image_attributes);
+
+    writer.append_image(&weight_canvas);
+    image_attributes.insert("image_name", "appleseed:RenderingBuffer");
+    writer.set_image_channels(shading_channel_count, shading_channel_names_cr.data());
+    writer.set_image_attributes(image_attributes);
+
+    // Add AOV layers.
+    for (size_t i = 0, e = aovs().size(); i < e; ++i)
+    {
+        const AOV* aov = aovs().get_by_index(i);
+
+        const char* aov_name = aov->get_name();
+        const Image& aov_image = aov->get_image();
+        writer.append_image(&aov_image);
+        image_attributes.insert("image_name", aov_name);
+        writer.set_image_channels(aov->get_channel_count(), aov->get_channel_names());
+        writer.set_image_attributes(image_attributes);
+    }
+
+    // Write the file.
+    writer.write();
+
+    // Add internal AOVs layers (in external files).
+    for (size_t i = 0, e = internal_aovs().size(); i < e; ++i)
+    {
+        const AOV* aov = internal_aovs().get_by_index(i);
+
+        const DenoiserAOV* denoiser_aov = dynamic_cast<const DenoiserAOV*>(aov);
+
+        // Save denoiser checkpoint.
+        if (denoiser_aov != nullptr)
+        {
+            save_denoiser_checkpoint(impl->m_checkpoint_path, denoiser_aov);
+        }
+    }
+
+    RENDERER_LOG_INFO("wrote checkpoint for pass %s.", pretty_uint(pass + 1).c_str());
+}
+
+void Frame::backup_checkpoint() const
+{
+    if (!impl->m_checkpoint)
+        return;
+
+    const bf::path boost_file_path(impl->m_checkpoint_path);
+    const bf::path directory = boost_file_path.parent_path();
+    const string base_file_name = boost_file_path.stem().string();
+    const string extension = boost_file_path.extension().string();
+    const string backup_file_name = base_file_name + ".checkpoint_backup" + extension;
+
+    assert(bf::exists(boost_file_path));
+
+    // Rename last checkpoint.
+    bf::rename(impl->m_checkpoint_path, backup_file_name.c_str());
+
+    RENDERER_LOG_INFO(
+        "moved checkpoint to %s, you can use it to render the scene with a higher number of passes.",
+        backup_file_name.c_str());
+}
+
+namespace
+{
 
     void add_chromaticities(ImageAttributes& image_attributes)
     {
@@ -484,10 +964,10 @@ namespace
     }
 
     void write_exr_image(
-        const bf::path&         file_path,
-        const Image&            image,
-        ImageAttributes&        image_attributes,
-        const AOV*              aov)
+        const bf::path&                 file_path,
+        const Image&                    image,
+        ImageAttributes&                image_attributes,
+        const AOV*                      aov)
     {
         create_parent_directories(file_path);
 
@@ -550,9 +1030,9 @@ namespace
     }
 
     void write_png_image(
-        const bf::path&         file_path,
-        const Image&            image,
-        ImageAttributes&        image_attributes)
+        const bf::path&                 file_path,
+        const Image&                    image,
+        ImageAttributes&                image_attributes)
     {
         const CanvasProperties& props = image.properties();
 
@@ -578,9 +1058,9 @@ namespace
     }
 
     bool write_image(
-        const char*             file_path,
-        const Image&            image,
-        const AOV*              aov = nullptr)
+        const char*                     file_path,
+        const Image&                    image,
+        const AOV*                      aov = nullptr)
     {
         assert(file_path);
 
@@ -819,8 +1299,8 @@ void Frame::write_main_and_aov_images_to_multipart_exr(const char* file_path) co
 }
 
 bool Frame::archive(
-    const char*         directory,
-    char**              output_path) const
+    const char*                                 directory,
+    char**                                      output_path) const
 {
     assert(directory);
 
@@ -939,6 +1419,18 @@ void Frame::extract_parameters()
             impl->m_denoising_mode = DenoisingMode::Off;
         }
     }
+
+    // Retrieve checkpoint parameters.
+    {
+
+        impl->m_checkpoint = m_params.get_optional<bool>("checkpoint", false);
+        impl->m_checkpoint_path = m_params.get_optional<string>("checkpoint_path", "");
+    }
+}
+
+AOVContainer& Frame::internal_aovs() const
+{
+    return impl->m_internal_aovs;
 }
 
 
