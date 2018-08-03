@@ -44,6 +44,7 @@
 #include "renderer/kernel/rendering/ephemeralshadingresultframebufferfactory.h"
 #include "renderer/kernel/rendering/final/adaptivepixelrenderer.h"
 #include "renderer/kernel/rendering/final/adaptivetilerenderer.h"
+#include "renderer/kernel/rendering/final/adaptivemediantilerenderer.h"
 #include "renderer/kernel/rendering/final/uniformpixelrenderer.h"
 #include "renderer/kernel/rendering/generic/genericframerenderer.h"
 #include "renderer/kernel/rendering/generic/genericsamplegenerator.h"
@@ -430,6 +431,29 @@ bool RendererComponents::create_tile_renderer_factory()
                 m_sample_renderer_factory.get(),
                 m_shading_result_framebuffer_factory.get(),
                 get_child_and_inherit_globals(m_params, "adaptive_tile_renderer")));
+
+        return true;
+    }
+    else if (name == "adaptive_median")
+    {
+        if (m_sample_renderer_factory.get() == nullptr)
+        {
+            RENDERER_LOG_ERROR("cannot use the adaptive median tile renderer without a sample renderer.");
+            return false;
+        }
+
+        if (m_shading_result_framebuffer_factory.get() == nullptr)
+        {
+            RENDERER_LOG_ERROR("cannot use the adaptive median tile renderer without a shading result framebuffer.");
+            return false;
+        }
+
+        m_tile_renderer_factory.reset(
+            new AdaptiveMedianTileRendererFactory(
+                m_frame,
+                m_sample_renderer_factory.get(),
+                m_shading_result_framebuffer_factory.get(),
+                get_child_and_inherit_globals(m_params, "adaptive_median_tile_renderer")));
 
         return true;
     }

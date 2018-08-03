@@ -460,20 +460,25 @@ namespace
             create_image_plane_sampling_general_settings(layout);
             create_image_plane_sampling_sampler_settings(layout);
 
-            create_direct_link("general.passes",                            "passes");
+            create_direct_link("general.passes",                                "passes");
 
-            create_direct_link("uniform_sampler.samples",                   "uniform_pixel_renderer.samples");
-            create_direct_link("uniform_sampler.force_antialiasing",        "uniform_pixel_renderer.force_antialiasing");
-            create_direct_link("uniform_sampler.decorrelate_pixels",        "uniform_pixel_renderer.decorrelate_pixels");
+            create_direct_link("uniform_sampler.samples",                       "uniform_pixel_renderer.samples");
+            create_direct_link("uniform_sampler.force_antialiasing",            "uniform_pixel_renderer.force_antialiasing");
+            create_direct_link("uniform_sampler.decorrelate_pixels",            "uniform_pixel_renderer.decorrelate_pixels");
 
-            create_direct_link("adaptive_sampler.min_samples",              "adaptive_pixel_renderer.min_samples");
-            create_direct_link("adaptive_sampler.max_samples",              "adaptive_pixel_renderer.max_samples");
-            create_direct_link("adaptive_sampler.quality",                  "adaptive_pixel_renderer.quality");
+            create_direct_link("adaptive_sampler.min_samples",                  "adaptive_pixel_renderer.min_samples");
+            create_direct_link("adaptive_sampler.max_samples",                  "adaptive_pixel_renderer.max_samples");
+            create_direct_link("adaptive_sampler.quality",                      "adaptive_pixel_renderer.quality");
 
-            create_direct_link("adaptive_tile_sampler.batch_size",          "adaptive_tile_renderer.batch_size");
-            create_direct_link("adaptive_tile_sampler.max_samples",         "adaptive_tile_renderer.max_samples");
-            create_direct_link("adaptive_tile_sampler.noise_threshold",     "adaptive_tile_renderer.noise_threshold");
-            create_direct_link("adaptive_tile_sampler.adaptiveness",        "adaptive_tile_renderer.adaptiveness");
+            create_direct_link("adaptive_tile_sampler.batch_size",              "adaptive_tile_renderer.batch_size");
+            create_direct_link("adaptive_tile_sampler.max_samples",             "adaptive_tile_renderer.max_samples");
+            create_direct_link("adaptive_tile_sampler.noise_threshold",         "adaptive_tile_renderer.noise_threshold");
+            create_direct_link("adaptive_tile_sampler.adaptiveness",            "adaptive_tile_renderer.adaptiveness");
+
+            create_direct_link("adaptive_median_tile_sampler.batch_size",       "adaptive_median_tile_renderer.batch_size");
+            create_direct_link("adaptive_median_tile_sampler.min_samples",      "adaptive_median_tile_renderer.min_samples");
+            create_direct_link("adaptive_median_tile_sampler.max_samples",      "adaptive_median_tile_renderer.max_samples");
+            create_direct_link("adaptive_median_tile_sampler.noise_threshold",  "adaptive_median_tile_renderer.noise_threshold");
 
             load_general_sampler(config);
             load_directly_linked_values(config);
@@ -495,12 +500,13 @@ namespace
             set_config(
                 config,
                 "pixel_renderer",
-                sampler == "adaptive_tile" ? "" : sampler.toAscii().data());
+                (sampler == "adaptive_tile" || sampler == "adaptive_median_tile") ? "" : sampler.toAscii().data());
 
             set_config(
                 config,
                 "tile_renderer",
-                sampler == "adaptive_tile" ? "adaptive" : "generic");
+                sampler == "adaptive_tile" ? "adaptive" :
+                    (sampler == "adaptive_median_tile" ? "adaptive_median" : "generic"));
         }
 
       private:
@@ -509,6 +515,7 @@ namespace
         QGroupBox*  m_uniform_image_plane_sampler;
         QGroupBox*  m_adaptive_image_plane_sampler;
         QGroupBox*  m_adaptive_tile_image_plane_sampler;
+        QGroupBox*  m_adaptive_median_tile_image_plane_sampler;
         QCheckBox*  m_uniform_sampler_decorrelate_pixels;
         QCheckBox*  m_uniform_sampler_force_aa;
 
@@ -528,6 +535,7 @@ namespace
             m_image_plane_sampler_combo->addItem("Uniform", "uniform");
             m_image_plane_sampler_combo->addItem("Adaptive", "adaptive");
             m_image_plane_sampler_combo->addItem("Adaptive Tile", "adaptive_tile");
+            m_image_plane_sampler_combo->addItem("Adaptive Median Tile", "adaptive_median_tile");
             m_image_plane_sampler_combo->setCurrentIndex(-1);
             sublayout->addRow("Sampler:", m_image_plane_sampler_combo);
 
@@ -546,12 +554,13 @@ namespace
             parent->addLayout(layout);
 
             create_image_plane_sampling_uniform_sampler_settings(layout);
+            create_image_plane_sampling_adaptive_sampler_settings(layout);
 
             QHBoxLayout* next_layout = create_horizontal_layout();
             parent->addLayout(next_layout);
 
             create_image_plane_sampling_adaptive_tile_sampler_settings(next_layout);
-            create_image_plane_sampling_adaptive_sampler_settings(next_layout);
+            create_image_plane_sampling_adaptive_median_sampler_settings(next_layout);
         }
 
         void create_image_plane_sampling_uniform_sampler_settings(QHBoxLayout* parent)
@@ -635,6 +644,34 @@ namespace
             sublayout->addRow("Adaptiveness", adaptiveness);
         }
 
+        void create_image_plane_sampling_adaptive_median_sampler_settings(QHBoxLayout* parent)
+        {
+            m_adaptive_median_tile_image_plane_sampler = new QGroupBox("Adaptive Median Tile Sampler");
+            parent->addWidget(m_adaptive_median_tile_image_plane_sampler);
+
+            QVBoxLayout* layout = create_vertical_layout();
+            m_adaptive_median_tile_image_plane_sampler->setLayout(layout);
+
+            QFormLayout* sublayout = create_form_layout();
+            layout->addLayout(sublayout);
+
+            QSpinBox* batch_size = create_integer_input("adaptive_median_tile_sampler.batch_size", 1, 1000000, 1);
+            batch_size->setToolTip(m_params_metadata.get_path("adaptive_median_tile_renderer.batch_size.help"));
+            sublayout->addRow("Batch Size:", batch_size);
+
+            QSpinBox* min_samples = create_integer_input("adaptive_median_tile_sampler.min_samples", 0, 1000000, 1);
+            min_samples->setToolTip(m_params_metadata.get_path("adaptive_median_tile_renderer.min_samples.help"));
+            sublayout->addRow("Min Samples:", min_samples);
+
+            QSpinBox* max_samples = create_integer_input("adaptive_median_tile_sampler.max_samples", 0, 1000000, 1);
+            max_samples->setToolTip(m_params_metadata.get_path("adaptive_median_tile_renderer.max_samples.help"));
+            sublayout->addRow("Max Samples:", max_samples);
+
+            QDoubleSpinBox* noise_threshold = create_double_input("adaptive_median_tile_sampler.noise_threshold", 0.0, 5.0, 5, 0.001);
+            noise_threshold->setToolTip(m_params_metadata.get_path("adaptive_median_tile_renderer.noise_threshold.help"));
+            sublayout->addRow("Noise Threshold:", noise_threshold);
+        }
+
         void load_general_sampler(const Configuration& config)
         {
             const string default_tr_value = m_params_metadata.get_path_optional<string>(
@@ -645,6 +682,11 @@ namespace
             if (tr_value == "adaptive")
             {
                 m_image_plane_sampler_combo->setCurrentIndex(2);
+                return;
+            }
+            else if (tr_value == "adaptive_median")
+            {
+                m_image_plane_sampler_combo->setCurrentIndex(3);
                 return;
             }
 
@@ -665,6 +707,7 @@ namespace
             m_uniform_image_plane_sampler->setEnabled(sampler == "uniform");
             m_adaptive_image_plane_sampler->setEnabled(sampler == "adaptive");
             m_adaptive_tile_image_plane_sampler->setEnabled(sampler == "adaptive_tile");
+            m_adaptive_median_tile_image_plane_sampler->setEnabled(sampler == "adaptive_median_tile");
         }
 
         void slot_changed_image_plane_sampler_passes(const int passes)

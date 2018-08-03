@@ -1166,6 +1166,8 @@ source_group ("renderer\\kernel\\rendering\\debug" FILES
 set (renderer_kernel_rendering_final_sources
     renderer/kernel/rendering/final/adaptivepixelrenderer.cpp
     renderer/kernel/rendering/final/adaptivepixelrenderer.h
+    renderer/kernel/rendering/final/adaptivemediantilerenderer.cpp
+    renderer/kernel/rendering/final/adaptivemediantilerenderer.h
     renderer/kernel/rendering/final/adaptivetilerenderer.cpp
     renderer/kernel/rendering/final/adaptivetilerenderer.h
     renderer/kernel/rendering/final/pixelsampler.cpp
