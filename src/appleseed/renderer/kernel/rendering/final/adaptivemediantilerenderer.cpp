@@ -82,7 +82,7 @@ namespace renderer
 namespace
 {
 
-    const size_t MedianWindowSize = 1;
+    const size_t VarianceWindowSize = 1;
 
     //
     // AdaptivePixel.
@@ -91,7 +91,7 @@ namespace
     struct AdaptivePixel
     {
         Vector<int16, 2>    m_position;
-        bool                m_converged;
+        bool                m_terminated;
     };
 
     //
@@ -222,7 +222,9 @@ namespace
                     return;
 
                 AdaptivePixel& pixel = m_pixel_ordering[i];
-                pixel.m_converged = false;
+                pixel.m_terminated = false;
+
+                if (m_params.m_min_samples == 0) continue;
 
                 // Retrieve the coordinates of the pixel in the padded tile.
                 const Vector2i pt(pixel.m_position.x, pixel.m_position.y);
@@ -265,148 +267,149 @@ namespace
 
             assert(second_framebuffer);
 
-            /*
+            // Noise buffer.
+            Tile noise_buffer(
+                tile.get_width(),
+                tile.get_height(),
+                1,
+                PixelFormatFloat);
+
+            size_t spp = m_params.m_min_samples;
+            size_t tile_converged_pixels = 0;
+
+            // We stop to sample padded pixels when some of the pixels have converged.
+            // Padded pixels are outside the noise tile and we can't compute their noise.
+            size_t padded_pixels_stop_threshold = static_cast<size_t>(static_cast<float>(pixel_count) * 0.1f);
+
+            // Adaptive rendering.
             while (true)
             {
-                // Check if image is converged or rendering was aborted.
-                if (abort_switch.is_aborted() || rendering_blocks.size() < 1)
+                bool all_pixels_terminated = true;
+
+                const size_t batch_size =
+                    m_params.m_max_samples == 0 ? m_params.m_batch_size
+                    : min(m_params.m_batch_size, m_params.m_max_samples - spp);
+
+                const size_t batch_instance =
+                    spp * frame_width * frame.image().properties().m_canvas_height;
+
+                float window_error_threshold = 0.0f;
+
+                // A Batch.
+                for (size_t i = 0, e = m_pixel_ordering.size(); i < e; ++i)
                 {
-                    finished_blocks.insert(finished_blocks.end(), rendering_blocks.begin(), rendering_blocks.end());
-                    break;
-                }
+                    // Cancel any work done on this tile if rendering is aborted.
+                    if (abort_switch.is_aborted())
+                        return;
 
-                // Sample the block in front of the deque.
-                PixelBlock& pb = rendering_blocks.front();
-                rendering_blocks.pop_front();
+                    AdaptivePixel& pixel = m_pixel_ordering[i];
 
-                // Each batch contains 'min' samples.
-                assert(m_params.m_max_samples > pb.m_spp);
-                const size_t remaining_samples = m_params.m_max_samples - pb.m_spp;
-                const size_t batch_size = min(m_params.m_batch_size, remaining_samples);
+                    // Retrieve the coordinates of the pixel in the padded tile.
+                    const Vector2i pt(pixel.m_position.x, pixel.m_position.y);
 
-                if (remaining_samples < 1)
-                {
-                    finished_blocks.push_back(pb);
-                    continue;
-                }
+                    const bool padded_pixel = !tile_bbox.contains(pt);
 
-                // Draw samples.
-                sample_pixel_block(
-                    pb,
-                    abort_switch,
-                    batch_size,
-                    framebuffer,
-                    second_framebuffer,
-                    tile_origin_x,
-                    tile_origin_y,
-                    frame,
-                    frame_width,
-                    pass_hash,
-                    aov_count);
+                    // Skip pixels outside the intersection of the padded tile and the crop window.
+                    if (!padded_tile_bbox.contains(pt))
+                        continue;
 
-                // Check if this was the last batch.
-                if (remaining_samples - batch_size < 1)
-                {
-                    finished_blocks.push_back(pb);
-                }
-                else
-                {
-                    const AABB2u& block_image_bb = AABB2i::intersect(framebuffer->get_crop_window(), pb.m_surface);
-
-                    // Evaluate block's noise amount.
-                    pb.m_block_error = FilteredTile::compute_tile_variance(
-                        block_image_bb,
-                        framebuffer,
-                        second_framebuffer);
-
-                    // Decide if the blocks needs to be splitted, sampled or if it has converged.
-                    if (pb.m_block_error <= m_params.m_noise_threshold)
+                    // We only check for end if we started adaptive sampling.
+                    if (spp > m_params.m_min_samples)
                     {
-                        pb.m_converged = true;
-                        finished_blocks.push_back(pb);
-                    }
-                    else if (pb.m_block_error <= m_params.m_splitting_threshold)
-                    {
-                        if (pb.m_main_axis == PixelBlock::Axis::Horizontal
-                                && block_image_bb.extent(0) >= BlockSplittingThreshold)
+                        if (m_params.m_max_samples != 0 && spp >= m_params.m_max_samples)
                         {
-                            split_pixel_block(
-                                pb,
-                                rendering_blocks,
-                                static_cast<int>(block_image_bb.min.x)
-                                + static_cast<int>(block_image_bb.extent(0) * 0.5f - 0.5f));
+                            // Pixel is terminated if it has reached max samples
+                            pixel.m_terminated = true;
                         }
-                        else if (pb.m_main_axis == PixelBlock::Axis::Vertical
-                                && block_image_bb.extent(1) >= BlockSplittingThreshold)
+                        else if (padded_pixel)
                         {
-                            split_pixel_block(
-                                pb,
-                                rendering_blocks,
-                                static_cast<int>(block_image_bb.min.y)
-                                + static_cast<int>(block_image_bb.extent(1) * 0.5f - 0.5f));
+                            // Pixel is terminated if it's on the margin and some of the pixels have
+                            // already converged.
+                            pixel.m_terminated = tile_converged_pixels >= padded_pixels_stop_threshold;
                         }
                         else
                         {
-                            rendering_blocks.push_front(pb);
+                            // Pixel is terminated if it has reached noise threshold.
+                            window_error_threshold = compute_window_variance(
+                                pt,
+                                noise_buffer,
+                                tile_bbox);
+
+                            pixel.m_terminated =
+                                window_error_threshold <= m_params.m_noise_threshold;
+
+                            if (pixel.m_terminated) ++tile_converged_pixels;
                         }
                     }
-                    else
+
+                    if (pixel.m_terminated && !padded_pixel)
                     {
-                        // Block's variance is too high and it needs to be sampled.
-                        rendering_blocks.push_front(pb);
+                        // Fill AOVs and stats.
+                        m_spp.insert(spp);
+
+                        if ((m_sample_aov_tile != nullptr || m_variation_aov_tile != nullptr)
+                            && tile_bbox.contains(pt))
+                        {
+                            Color3f value(0.0f);
+
+                            if (m_sample_aov_tile != nullptr)
+                            {
+                                m_sample_aov_tile->get_pixel(pt.x, pt.y, value);
+                                value[0] += static_cast<float>(spp);
+                                m_sample_aov_tile->set_pixel(pt.x, pt.y, value);
+                            }
+
+                            if (m_variation_aov_tile != nullptr)
+                            {
+                                m_sample_aov_tile->get_pixel(pt.x, pt.y, value);
+                                value[0] += window_error_threshold;
+                                m_variation_aov_tile->set_pixel(pt.x, pt.y, value);
+                            }
+                        }
+
+                        continue;
+                    }
+
+                    const Vector2i pi(tile_origin_x + pt.x, tile_origin_y + pt.y);
+
+                    const size_t pixel_index = pi.y * frame_width + pi.x;
+                    const size_t instance =
+                        hash_uint32(static_cast<uint32>(pass_hash + pixel_index + batch_instance));
+
+                    sample_pixel(
+                        frame,
+                        pi,
+                        pt,
+                        framebuffer,
+                        nullptr,
+                        pass_hash,
+                        instance,
+                        batch_size,
+                        aov_count);
+
+                    if (!padded_pixel)
+                    {
+                        // Compute variance.
+                        float pixel_variance = FilteredTile::compute_weighted_pixel_variance(
+                            framebuffer->pixel(pt.x, pt.y),
+                            second_framebuffer->pixel(pt.x, pt.y));
+
+                        noise_buffer.set_pixel(
+                            pt.x,
+                            pt.y,
+                            &pixel_variance);
+
+                        all_pixels_terminated = false;
                     }
                 }
+
+                if (all_pixels_terminated) break;
+
+                spp += batch_size;
             }
-            */
-
-            // Rendering finished, fill diagnostic AOVs and update statistics.
-            size_t tile_converged_pixel = 0;
-
-            /*
-            for (size_t i = 0, n = finished_blocks.size(); i < n; ++i)
-            {
-                const PixelBlock& pb = finished_blocks[i];
-                const AABB2u& pb_image_aabb = AABB2i::intersect(framebuffer->get_crop_window(), pb.m_surface);
-                const size_t pb_pixel_count = static_cast<size_t>(pb_image_aabb.volume());
-
-                // Update statistics.
-                m_spp.insert(pb.m_spp, pb_pixel_count);
-
-                if (pb.m_converged)
-                    tile_converged_pixel += pb_pixel_count;
-
-                if (m_sample_aov_tile == nullptr && m_variation_aov_tile == nullptr)
-                    continue;
-
-                for (size_t y = pb_image_aabb.min.y; y <= pb_image_aabb.max.y; ++y)
-                {
-                    for (size_t x = pb_image_aabb.min.x; x <= pb_image_aabb.max.x; ++x)
-                    {
-                        // Retrieve the coordinates of the pixel in the padded tile.
-                        const Vector2u pt(x, y);
-
-                        Color3f value(0.0f);
-
-                        if (m_sample_aov_tile != nullptr)
-                        {
-                            m_sample_aov_tile->get_pixel(pt.x, pt.y, value);
-                            value[0] += static_cast<float>(pb.m_spp);
-                            m_sample_aov_tile->set_pixel(pt.x, pt.y, value);
-                        }
-
-                        if (m_variation_aov_tile != nullptr)
-                        {
-                            m_sample_aov_tile->get_pixel(pt.x, pt.y, value);
-                            value[0] += static_cast<float>(pb.m_block_error);
-                            m_variation_aov_tile->set_pixel(pt.x, pt.y, value);
-                        }
-                    }
-                }
-            }
-            */
 
             m_total_pixel += pixel_count;
-            m_total_pixel_converged += tile_converged_pixel;
+            m_total_pixel_converged += tile_converged_pixels;
 
             // Develop the framebuffer to the tile.
             framebuffer->develop_to_tile(tile, aov_tiles);
@@ -667,6 +670,43 @@ namespace
             }
 
             on_pixel_end(frame, pi, pt);
+        }
+
+        float compute_window_variance(
+            const Vector2i&                     pt,
+            const Tile&                         noise_buffer,
+            const AABB2i&                       tile_bbox) const
+        {
+            // Simply ignore out of bound pixels.
+            // At this point, we know that pt is in the tile.
+
+            // Create the window.
+            AABB2i window;
+            window.min.x = pt.x - VarianceWindowSize;
+            window.max.x = pt.x + VarianceWindowSize;
+            window.min.y = pt.y - VarianceWindowSize;
+            window.max.y = pt.y + VarianceWindowSize;
+            window = AABB2i::intersect(window, tile_bbox);
+
+            if (!window.is_valid())
+            {
+                return 0.0f;
+            }
+
+            // We take the maximum of the window.
+            float result = std::numeric_limits<float>::lowest();
+
+            for (size_t y = window.min.y; y <= window.max.y; ++y)
+            {
+                const float* ptr = reinterpret_cast<const float*>(noise_buffer.pixel(window.min.x, y));
+
+                for (size_t x = window.min.x; x <= window.max.x; ++x)
+                {
+                    result = max(result, *ptr++);
+                }
+            }
+
+            return result;
         }
 
         static Color4f colorize_samples(

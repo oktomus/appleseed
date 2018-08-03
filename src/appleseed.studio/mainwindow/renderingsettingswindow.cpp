@@ -667,7 +667,7 @@ namespace
             max_samples->setToolTip(m_params_metadata.get_path("adaptive_median_tile_renderer.max_samples.help"));
             sublayout->addRow("Max Samples:", max_samples);
 
-            QDoubleSpinBox* noise_threshold = create_double_input("adaptive_median_tile_sampler.noise_threshold", 0.0, 5.0, 5, 0.001);
+            QDoubleSpinBox* noise_threshold = create_double_input("adaptive_median_tile_sampler.noise_threshold", 0.0, 50.0, 3, 0.01);
             noise_threshold->setToolTip(m_params_metadata.get_path("adaptive_median_tile_renderer.noise_threshold.help"));
             sublayout->addRow("Noise Threshold:", noise_threshold);
         }
