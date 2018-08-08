@@ -82,7 +82,7 @@ namespace renderer
 namespace
 {
 
-    const size_t VarianceWindowSize = 1;
+    const size_t VarianceWindowSize = 3;
 
     //
     // AdaptivePixel.
@@ -210,9 +210,24 @@ namespace
             assert(framebuffer);
 
             // Create the buffer into which we will accumulate every second samples.
-            ShadingResultFrameBuffer* second_framebuffer = nullptr;
+            // Accumulation buffer.
+            // If rendering multiple passes, the permanent buffer factory will return
+            // the same buffer so we must create a new one.
+            ShadingResultFrameBuffer* second_framebuffer = new ShadingResultFrameBuffer(
+                tile.get_width(),
+                tile.get_height(),
+                frame.aov_images().size(),
+                tile_bbox,
+                frame.get_filter());
 
-            const size_t pixel_count = framebuffer->get_width() * framebuffer->get_height();
+            if (m_params.m_passes > 1)
+                second_framebuffer->copy_from(*framebuffer);
+            else
+                second_framebuffer->clear();
+
+            assert(second_framebuffer);
+
+            const size_t pixel_count = tile_bbox.volume();
 
             // First uniform batch.
             for (size_t i = 0, e = m_pixel_ordering.size(); i < e; ++i)
@@ -243,29 +258,12 @@ namespace
                     pi,
                     pt,
                     framebuffer,
-                    nullptr,
+                    second_framebuffer,
                     pass_hash,
                     instance,
                     m_params.m_min_samples,
                     aov_count);
             }
-
-            // Accumulation buffer.
-            // If rendering multiple passes, the permanent buffer factory will return
-            // the same buffer so we must create a new one.
-            second_framebuffer = new ShadingResultFrameBuffer(
-                tile.get_width(),
-                tile.get_height(),
-                frame.aov_images().size(),
-                tile_bbox,
-                frame.get_filter());
-
-            if (m_params.m_passes > 1)
-                second_framebuffer->copy_from(*framebuffer);
-            else
-                second_framebuffer->clear();
-
-            assert(second_framebuffer);
 
             // Noise buffer.
             Tile noise_buffer(
@@ -279,7 +277,7 @@ namespace
 
             // We stop to sample padded pixels when some of the pixels have converged.
             // Padded pixels are outside the noise tile and we can't compute their noise.
-            size_t padded_pixels_stop_threshold = static_cast<size_t>(static_cast<float>(pixel_count) * 0.1f);
+            size_t padded_pixels_stop_threshold = static_cast<size_t>(static_cast<float>(pixel_count) * 0.5f);
 
             // Adaptive rendering.
             while (true)
@@ -303,6 +301,9 @@ namespace
                         return;
 
                     AdaptivePixel& pixel = m_pixel_ordering[i];
+
+                    if (pixel.m_terminated)
+                        continue;
 
                     // Retrieve the coordinates of the pixel in the padded tile.
                     const Vector2i pt(pixel.m_position.x, pixel.m_position.y);
@@ -381,7 +382,7 @@ namespace
                         pi,
                         pt,
                         framebuffer,
-                        nullptr,
+                        second_framebuffer,
                         pass_hash,
                         instance,
                         batch_size,
@@ -658,7 +659,7 @@ namespace
                     static_cast<float>(pt.y + s.y),
                     shading_result);
 
-                if (second_framebuffer && second)
+                if (second)
                 {
                     second_framebuffer->add(
                             static_cast<float>(pt.x + s.x),
