@@ -5,7 +5,7 @@
 //
 // This software is released under the MIT license.
 //
-// Copyright (c) 2017-2018 Petra Gospodnetic, The appleseedhq Organization
+// Copyright (c) 2018 Esteban Tovagliari, The appleseedhq Organization
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -26,82 +26,48 @@
 // THE SOFTWARE.
 //
 
-#pragma once
-
 // appleseed.foundation headers.
-#include "foundation/math/aabb.h"
-#include "foundation/math/bvh.h"
+#include "foundation/core/concepts/iunknown.h"
+#include "foundation/platform/compiler.h"
+#include "foundation/utility/stampedptr.h"
+#include "foundation/utility/test.h"
 
-// Standard headers.
-#include <cstddef>
+using namespace foundation;
 
-namespace renderer
+TEST_SUITE(Foundation_Utility_StampedPtr)
 {
-
-//
-// LightTreeNode class implementation.
-//
-
-template <typename AABB>
-class LightTreeNode
-  : public foundation::bvh::Node<AABB>
-{
-  public:
-    LightTreeNode()
-      : m_importance(0.0f)
-      , m_root(false)
-      , m_parent(0)
+    TEST_CASE(TestWithStackPointer)
     {
+        const int value = 11;
+        const uint16 stamp = 7;
+
+        stamped_ptr<const int> x(&value, stamp);
+
+        EXPECT_EQ(x.get_ptr(), &value);
+        EXPECT_EQ(x.get_stamp(), stamp);
+        EXPECT_EQ(*x.get_ptr(), value);
     }
 
-    float get_importance() const
+    TEST_CASE(TestWithHeapPointer)
     {
-        return m_importance;
+        const int* ptr = new int(11);
+        const uint16 stamp = 7;
+
+        stamped_ptr<const int> x(ptr, stamp);
+
+        EXPECT_EQ(x.get_ptr(), ptr);
+        EXPECT_EQ(x.get_stamp(), stamp);
+        EXPECT_EQ(*x.get_ptr(), *ptr);
+
+        delete ptr;
     }
 
-    size_t get_level() const
+    TEST_CASE(TestWithNullPtr)
     {
-        return m_tree_level;
+        const uint16 stamp = 7;
+        stamped_ptr<const int> x(nullptr, stamp);
+
+        EXPECT_EQ(x.get_ptr(), nullptr);
+        EXPECT_EQ(x.get_stamp(), stamp);
     }
-
-    size_t get_parent() const
-    {
-        return m_parent;
-    }
-
-    bool is_root() const
-    {
-        return m_root;
-    }
-
-    void set_importance(const float importance)
-    {
-        m_importance = importance;
-    }
-
-    // todo: set this during the construction
-    void set_level(const size_t node_level)
-    {
-        m_tree_level = node_level;
-    }
-
-    // todo: set this during the construction
-    void set_parent(const size_t node_parent)
-    {
-        m_parent = node_parent;
-    }
-
-    // todo: set this during the construction
-    void set_root()
-    {
-        m_root = true;
-    }
-
-  private:
-    float   m_importance;
-    size_t  m_tree_level;
-    size_t  m_parent;
-    bool    m_root;
-};
-
-}   // namespace renderer
+}

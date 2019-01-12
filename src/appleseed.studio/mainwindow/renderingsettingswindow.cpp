@@ -1035,7 +1035,6 @@ namespace
             QComboBox* light_sampling = create_combobox("advanced.light_sampler.algorithm");
             light_sampling->setToolTip(m_params_metadata.get_path("light_sampler.algorithm.help"));
             light_sampling->addItem("CDF", "cdf");
-            light_sampling->addItem("Light Tree", "lighttree");
             sublayout->addRow("Light Sampler:", light_sampling);
         }
 
