@@ -382,7 +382,7 @@ void DirectLightingIntegrator::add_emitting_shape_sample_contribution(
             static_cast<float>(
                 cos_on *
                 rcp_sample_square_distance *
-                edf->get_max_contribution() *
+                sample.m_shape->get_average_radiance() *
                 sample.m_shape->get_area());
 
         // Use Russian Roulette to skip this sample if its maximum contribution is low.

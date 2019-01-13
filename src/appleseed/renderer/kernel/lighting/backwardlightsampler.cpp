@@ -121,9 +121,9 @@ float BackwardLightSampler::evaluate_pdf(
         return 0.0f;
 
     const EmittingShape* shape = *shape_ptr;
-
-    const float shape_probability = shape->get_shape_prob();
-    return shape_probability * shape->get_rcp_area();
+    return shape->evaluate_pdf(
+        surface_shading_point.get_point(),
+        light_shading_point.get_point());
 }
 
 Dictionary BackwardLightSampler::get_params_metadata()

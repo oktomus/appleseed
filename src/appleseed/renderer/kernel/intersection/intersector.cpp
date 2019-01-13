@@ -351,10 +351,9 @@ bool Intersector::trace_probe(
     return visitor.hit();
 }
 
-void Intersector::make_surface_shading_point(
+void Intersector::make_triangle_shading_point(
     ShadingPoint&                       shading_point,
     const ShadingRay&                   shading_ray,
-    const ShadingPoint::PrimitiveType   primitive_type,
     const Vector2f&                     bary,
     const AssemblyInstance*             assembly_instance,
     const Transformd&                   assembly_instance_transform,
@@ -363,7 +362,7 @@ void Intersector::make_surface_shading_point(
     const TriangleSupportPlaneType&     triangle_support_plane) const
 {
 #ifdef DEBUG
-    // This helps finding bugs if make_surface_shading_point()
+    // This helps finding bugs if make_triangle_shading_point()
     // is called on a previously used shading point.
     poison(shading_point);
 #endif
@@ -374,7 +373,7 @@ void Intersector::make_surface_shading_point(
     shading_point.m_ray = shading_ray;
 
     // Primary intersection results.
-    shading_point.m_primitive_type = primitive_type;
+    shading_point.m_primitive_type = ShadingPoint::PrimitiveTriangle;
     shading_point.m_bary = bary;
     shading_point.m_assembly_instance = assembly_instance;
     shading_point.m_assembly_instance_transform = assembly_instance_transform;
@@ -385,6 +384,39 @@ void Intersector::make_surface_shading_point(
 
     // Available on-demand results: none.
     shading_point.m_members = 0;
+}
+
+void Intersector::make_procedural_surface_shading_point(
+    ShadingPoint&                       shading_point,
+    const ShadingRay&                   shading_ray,
+    const foundation::Vector2f&         uv,
+    const AssemblyInstance*             assembly_instance,
+    const foundation::Transformd&       assembly_instance_transform,
+    const size_t                        object_instance_index,
+    const size_t                        primitive_index) const
+{
+#ifdef DEBUG
+    // This helps finding bugs if make_procedural_surface_shading_point()
+    // is called on a previously used shading point.
+    poison(shading_point);
+#endif
+
+    // Context.
+    shading_point.m_texture_cache = &m_texture_cache;
+    shading_point.m_scene = &m_trace_context.get_scene();
+    shading_point.m_ray = shading_ray;
+
+    // Primary intersection results.
+    shading_point.m_primitive_type = ShadingPoint::PrimitiveProceduralSurface;
+    shading_point.m_uv = uv;
+    shading_point.m_bary = uv;
+    shading_point.m_assembly_instance = assembly_instance;
+    shading_point.m_assembly_instance_transform = assembly_instance_transform;
+    shading_point.m_assembly_instance_transform_seq = &assembly_instance->transform_sequence();
+    shading_point.m_object_instance_index = object_instance_index;
+    shading_point.m_primitive_index = primitive_index;
+
+    shading_point.m_members = ShadingPoint::HasUV0;
 }
 
 void Intersector::make_volume_shading_point(

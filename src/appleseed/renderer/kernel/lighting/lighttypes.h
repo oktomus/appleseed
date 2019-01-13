@@ -82,12 +82,34 @@ class EmittingShape
         RectShape
     };
 
-    // Constructor.
-    EmittingShape(
-        const ShapeType             shape_type,
+    static EmittingShape create_triangle_shape(
         const AssemblyInstance*     assembly_instance,
         const size_t                object_instance_index,
-        const size_t                primitive_index);
+        const size_t                primitive_index,
+        const Material*             material,
+        const foundation::Vector3d& v0,
+        const foundation::Vector3d& v1,
+        const foundation::Vector3d& v2,
+        const foundation::Vector3d& n0,
+        const foundation::Vector3d& n1,
+        const foundation::Vector3d& n2,
+        const foundation::Vector3d& geometric_normal);
+
+    static EmittingShape create_sphere_shape(
+        const AssemblyInstance*     assembly_instance,
+        const size_t                object_instance_index,
+        const Material*             material,
+        const foundation::Vector3d& center,
+        const double                radius);
+
+    static EmittingShape create_rect_shape(
+        const AssemblyInstance*     assembly_instance,
+        const size_t                object_instance_index,
+        const Material*             material,
+        const foundation::Vector3d& p,
+        const foundation::Vector3d& x,
+        const foundation::Vector3d& y,
+        const foundation::Vector3d& n);
 
     ShapeType get_shape_type() const;
 
@@ -116,12 +138,19 @@ class EmittingShape
         const float                 shape_prob,
         LightSample&                light_sample) const;
 
+    float evaluate_pdf(
+        const foundation::Vector3d& p,
+        const foundation::Vector3d& l) const;
+
     void make_shading_point(
         ShadingPoint&               shading_point,
         const foundation::Vector3d& point,
         const foundation::Vector3d& direction,
         const foundation::Vector2f& bary,
         const Intersector&          intersector) const;
+
+    void estimate_average_radiance();
+    float get_average_radiance() const;
 
   private:
     friend class LightSamplerBase;
@@ -138,7 +167,16 @@ class EmittingShape
     float                       m_area;                         // world space shape area
     float                       m_rcp_area;                     // world space shape area reciprocal
     float                       m_shape_prob;                   // probability density of this shape
+    float                       m_average_radiance;             // estimated average radiance emitted from this shape
     const Material*             m_material;
+
+    // Constructor.
+    EmittingShape(
+        const ShapeType             shape_type,
+        const AssemblyInstance*     assembly_instance,
+        const size_t                object_instance_index,
+        const size_t                primitive_index,
+        const Material*             material);
 };
 
 

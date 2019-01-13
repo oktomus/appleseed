@@ -159,7 +159,7 @@ void LightSamplerBase::collect_emitting_shapes(
         // Retrieve the object.
         Object& object = object_instance->get_object();
 
-        double object_area = 0.0;
+        float object_area = 0.0f;
 
         if (strcmp(object.get_model(), MeshObjectFactory().get_model()) == 0)
         {
@@ -178,7 +178,6 @@ void LightSamplerBase::collect_emitting_shapes(
             const Transformd global_transform = assembly_instance_transform * object_instance_transform;
 
             // Loop over the triangles of the mesh.
-            double object_area = 0.0;
             for (size_t triangle_index = 0, triangle_count = tess.m_primitives.size();
                  triangle_index < triangle_count; ++triangle_index)
             {
@@ -272,37 +271,28 @@ void LightSamplerBase::collect_emitting_shapes(
                     if (material == nullptr || !material->has_emission())
                         continue;
 
-                    // Invoke the shape handling function.
-                    handle_emitting_shape(
-                        material,
-                        static_cast<float>(area),
-                        m_emitting_shapes.size());
-
                     // Create a light-emitting triangle.
-                    EmittingShape emitting_triangle(
-                        EmittingShape::TriangleShape,
+                    auto emitting_shape = EmittingShape::create_triangle_shape(
                         &assembly_instance,
                         object_instance_index,
-                        triangle_index);
-                    emitting_triangle.m_object_instance_index = object_instance_index;
-                    emitting_triangle.m_v0 = v0;
-                    emitting_triangle.m_v1 = v1;
-                    emitting_triangle.m_v2 = v2;
-                    emitting_triangle.m_n0 = side == 0 ? n0 : -n0;
-                    emitting_triangle.m_n1 = side == 0 ? n1 : -n1;
-                    emitting_triangle.m_n2 = side == 0 ? n2 : -n2;
-                    emitting_triangle.m_geometric_normal = side == 0 ? geometric_normal : -geometric_normal;
-                    emitting_triangle.m_shape_support_plane = triangle_support_plane;
-                    emitting_triangle.m_area = static_cast<float>(area);
-                    emitting_triangle.m_rcp_area = static_cast<float>(rcp_area);
-                    emitting_triangle.m_shape_prob = 0.0f;   // will be initialized once the emitting triangle CDF is built
-                    emitting_triangle.m_material = material;
+                        triangle_index,
+                        material,
+                        v0,
+                        v1,
+                        v2,
+                        side == 0 ? n0 : -n0,
+                        side == 0 ? n1 : -n1,
+                        side == 0 ? n2 : -n2,
+                        side == 0 ? geometric_normal : -geometric_normal);
+                    emitting_shape.m_shape_support_plane = triangle_support_plane;
+                    emitting_shape.m_area = static_cast<float>(area);
+                    emitting_shape.m_rcp_area = static_cast<float>(rcp_area);
 
-                    // Store the light-emitting triangle.
-                    m_emitting_shapes.push_back(emitting_triangle);
+                    // Invoke the shape handling function.
+                    handle_emitting_shape(emitting_shape);
 
                     // Accumulate the object area for OSL shaders.
-                    object_area += area;
+                    object_area += emitting_shape.m_area;
                 }
             }
         }
@@ -336,9 +326,15 @@ void LightSamplerBase::collect_emitting_shapes(
                     sphere.get_name());
             }
 
-            const double area = FourPi<double>() * square(radius);
+            // Create a light-emitting shape.
+            auto emitting_shape = EmittingShape::create_sphere_shape(
+                &assembly_instance,
+                object_instance_index,
+                material,
+                center,
+                radius);
 
-            if (area == 0.0)
+            if (emitting_shape.m_area == 0.0f)
             {
                 RENDERER_LOG_WARNING(
                     "sphere object \"%s\" has zero radius; it will be ignored.",
@@ -346,33 +342,11 @@ void LightSamplerBase::collect_emitting_shapes(
                 continue;
             }
 
-            const double rcp_area = 1.0 / area;
-
             // Invoke the shape handling function.
-            handle_emitting_shape(
-                material,
-                static_cast<float>(area),
-                m_emitting_shapes.size());
-
-            // Create a light-emitting shape.
-            EmittingShape emitting_shape(
-                EmittingShape::SphereShape,
-                &assembly_instance,
-                object_instance_index,
-                0);
-
-            emitting_shape.m_v0 = center;
-            emitting_shape.m_v1 = Vector3d(radius);
-            emitting_shape.m_area = static_cast<float>(area);
-            emitting_shape.m_rcp_area = static_cast<float>(rcp_area);
-            emitting_shape.m_shape_prob = 0.0f;   // will be initialized once the emitting triangle CDF is built
-            emitting_shape.m_material = material;
-
-            // Store the light-emitting shape.
-            m_emitting_shapes.push_back(emitting_shape);
+            handle_emitting_shape(emitting_shape);
 
             // Accumulate the object area for OSL shaders.
-            object_area += area;
+            object_area = emitting_shape.m_area;
         }
         else if (strcmp(object.get_model(), RectObjectFactory().get_model()) == 0)
         {
@@ -420,37 +394,25 @@ void LightSamplerBase::collect_emitting_shapes(
                 if (material == nullptr || !material->has_emission())
                     continue;
 
-                // Invoke the shape handling function.
-                handle_emitting_shape(
-                    material,
-                    static_cast<float>(area),
-                    m_emitting_shapes.size());
-
                 // Create a light-emitting rect.
-                EmittingShape emitting_rect(
-                    EmittingShape::RectShape,
+                auto emitting_shape = EmittingShape::create_rect_shape(
                     &assembly_instance,
                     object_instance_index,
-                    0);
+                    material,
+                    p,
+                    v1,
+                    v2,
+                    side == 0 ? n : -n);
 
-                emitting_rect.m_object_instance_index = object_instance_index;
-                emitting_rect.m_v0 = p;
-                emitting_rect.m_v1 = v1;
-                emitting_rect.m_v2 = v2;
-                emitting_rect.m_geometric_normal = side == 0 ? n : -n;
-                emitting_rect.m_area = static_cast<float>(area);
-                emitting_rect.m_rcp_area = static_cast<float>(rcp_area);
-                emitting_rect.m_shape_prob = 0.0f;   // will be initialized once the emitting triangle CDF is built
-                emitting_rect.m_material = material;
+                emitting_shape.m_area = static_cast<float>(area);
+                emitting_shape.m_rcp_area = static_cast<float>(rcp_area);
 
-                // Store the light-emitting triangle.
-                m_emitting_shapes.push_back(emitting_rect);
+                // Invoke the shape handling function.
+                handle_emitting_shape(emitting_shape);
 
                 // Accumulate the object area for OSL shaders.
-                object_area += area;
+                object_area += emitting_shape.m_area;
             }
-
-            continue;
         }
         else
         {
@@ -461,13 +423,13 @@ void LightSamplerBase::collect_emitting_shapes(
         store_object_area_in_shadergroups(
             &assembly_instance,
             object_instance,
-            static_cast<float>(object_area),
+            object_area,
             front_materials);
 
         store_object_area_in_shadergroups(
             &assembly_instance,
             object_instance,
-            static_cast<float>(object_area),
+            object_area,
             back_materials);
     }
 }
@@ -590,22 +552,26 @@ void LightSamplerBase::sample_emitting_shapes_solid_angle(
     assert(light_sample.m_probability > 0.0f);
 }
 
-void LightSamplerBase::handle_emitting_shape(
-    const Material*                     material,
-    const float                         area,
-    const size_t                        emitting_shape_index)
+void LightSamplerBase::handle_emitting_shape(EmittingShape& shape)
 {
     // Retrieve the EDF and get the importance multiplier.
     float importance_multiplier = 1.0f;
-    if (const EDF* edf = material->get_uncached_edf())
+    if (const EDF* edf = shape.m_material->get_uncached_edf())
         importance_multiplier = edf->get_uncached_importance_multiplier();
 
+    // Compute the average radiance emitted by this shape.
+    shape.estimate_average_radiance();
+
     // Compute the probability density of this shape.
-    const float shape_importance = m_params.m_importance_sampling ? static_cast<float>(area) : 1.0f;
-    const float shape_prob = shape_importance * importance_multiplier;
+    const float shape_importance = m_params.m_importance_sampling ? shape.m_area : 1.0f;
+    const float shape_prob = shape.get_average_radiance() * shape_importance * importance_multiplier;
 
     // Insert the light-emitting shape into the CDF.
+    const size_t emitting_shape_index = m_emitting_shapes.size();
     m_emitting_shapes_cdf.insert(emitting_shape_index, shape_prob);
+
+    // Store the light-emitting shape.
+    m_emitting_shapes.push_back(shape);
 }
 
 //

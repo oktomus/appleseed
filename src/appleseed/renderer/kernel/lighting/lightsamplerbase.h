@@ -139,10 +139,7 @@ class LightSamplerBase
         const foundation::Vector3f&         s,
         LightSample&                        light_sample) const;
 
-    void handle_emitting_shape(
-        const Material*                     material,
-        const float                         area,
-        const size_t                        emitting_shape_index);
+    void handle_emitting_shape(EmittingShape& shape);
 };
 
 

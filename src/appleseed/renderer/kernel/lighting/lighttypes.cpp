@@ -45,11 +45,90 @@ namespace renderer
 // EmittingShape class implementation.
 //
 
+EmittingShape EmittingShape::create_triangle_shape(
+    const AssemblyInstance*     assembly_instance,
+    const size_t                object_instance_index,
+    const size_t                primitive_index,
+    const Material*             material,
+    const Vector3d&             v0,
+    const Vector3d&             v1,
+    const Vector3d&             v2,
+    const Vector3d&             n0,
+    const Vector3d&             n1,
+    const Vector3d&             n2,
+    const Vector3d&             geometric_normal)
+{
+    EmittingShape shape(
+        TriangleShape,
+        assembly_instance,
+        object_instance_index,
+        primitive_index,
+        material);
+
+    shape.m_v0 = v0;
+    shape.m_v1 = v1;
+    shape.m_v2 = v2;
+    shape.m_n0 = n0;
+    shape.m_n1 = n1;
+    shape.m_n2 = n2;
+    shape.m_geometric_normal = geometric_normal;
+    return shape;
+}
+
+EmittingShape EmittingShape::create_sphere_shape(
+    const AssemblyInstance*     assembly_instance,
+    const size_t                object_instance_index,
+    const Material*             material,
+    const Vector3d&             center,
+    const double                radius)
+{
+    EmittingShape shape(
+        SphereShape,
+        assembly_instance,
+        object_instance_index,
+        0,
+        material);
+
+    shape.m_v0 = center;
+    shape.m_v1 = Vector3d(radius);
+
+    shape.m_area = static_cast<float>(FourPi<double>() * square(radius));
+
+    if (shape.m_area != 0.0f)
+        shape.m_rcp_area = 1.0f / shape.m_area;
+
+    return shape;
+}
+
+EmittingShape EmittingShape::create_rect_shape(
+    const AssemblyInstance*     assembly_instance,
+    const size_t                object_instance_index,
+    const Material*             material,
+    const Vector3d&             p,
+    const Vector3d&             x,
+    const Vector3d&             y,
+    const Vector3d&             n)
+{
+    EmittingShape shape(
+        RectShape,
+        assembly_instance,
+        object_instance_index,
+        0,
+        material);
+
+    shape.m_v0 = p;
+    shape.m_v1 = x;
+    shape.m_v2 = y;
+    shape.m_geometric_normal = n;
+    return shape;
+}
+
 EmittingShape::EmittingShape(
     const ShapeType         shape_type,
     const AssemblyInstance* assembly_instance,
     const size_t            object_instance_index,
-    const size_t            primitive_index)
+    const size_t            primitive_index,
+    const Material*         material)
 {
     m_assembly_instance_and_type.set(
         assembly_instance,
@@ -57,6 +136,9 @@ EmittingShape::EmittingShape(
 
     m_object_instance_index = object_instance_index;
     m_primitive_index = primitive_index;
+    m_material = material;
+    m_shape_prob = 0.0f;
+    m_average_radiance = 1.0f;
 }
 
 void EmittingShape::sample_uniform(
@@ -64,9 +146,6 @@ void EmittingShape::sample_uniform(
     const float             shape_prob,
     LightSample&            light_sample) const
 {
-    // Store a pointer to the emitting shape.
-    light_sample.m_shape = this;
-
     const auto shape_type = get_shape_type();
 
     if (shape_type == TriangleShape)
@@ -98,6 +177,7 @@ void EmittingShape::sample_uniform(
     {
         // todo: implement me...
         // ...
+        assert(false);
     }
     else if (shape_type == RectShape)
     {
@@ -117,6 +197,13 @@ void EmittingShape::sample_uniform(
         // Set the world space geometric normal.
         light_sample.m_geometric_normal = m_geometric_normal;
     }
+    else
+    {
+        assert(false);
+    }
+
+    // Store a pointer to the emitting shape.
+    light_sample.m_shape = this;
 
     // Compute the probability density of this sample.
     light_sample.m_probability = shape_prob * get_rcp_area();
@@ -128,8 +215,91 @@ void EmittingShape::sample_solid_angle(
     const float             shape_prob,
     LightSample&            light_sample) const
 {
-    // todo: implement me...
-    sample_uniform(s, shape_prob, light_sample);
+    const auto shape_type = get_shape_type();
+
+    if (shape_type == TriangleShape)
+    {
+        const Vector3d o = shading_point.get_point();
+        const Vector3d A = normalize(m_v0 - o);
+        const Vector3d B = normalize(m_v1 - o);
+        const Vector3d C = normalize(m_v2 - o);
+
+        double solid_angle;
+        const Vector3d P = sample_spherical_triangle_uniform(A, B, C, Vector2d(s), &solid_angle);
+
+        // Project the point on the triangle.
+        const double d = -dot(m_v0, m_geometric_normal);
+        const double t = -(dot(m_geometric_normal, o) + d) / dot(m_geometric_normal, P);
+        light_sample.m_point = o + P * t;
+
+        // Compute the probability.
+        Vector3d D = P - o;
+        const double D_norm2 = square_norm(D);
+        D /= D_norm2;
+
+        const double cos_theta = dot(-m_geometric_normal, D);
+        const double rcp_solid_angle = 1.0 / solid_angle;
+
+        const float pdf = rcp_solid_angle * cos_theta / D_norm2;
+        light_sample.m_probability = shape_prob * pdf;
+    }
+    else if (shape_type == SphereShape)
+    {
+        // todo: implement me...
+        sample_uniform(s, shape_prob, light_sample);
+    }
+    else if (shape_type == RectShape)
+    {
+        // todo: implement me...
+        sample_uniform(s, shape_prob, light_sample);
+    }
+    else
+    {
+        assert(false);
+    }
+
+    // Store a pointer to the emitting shape.
+    light_sample.m_shape = this;
+}
+
+float EmittingShape::evaluate_pdf(
+    const Vector3d&         p,
+    const Vector3d&         l) const
+{
+    const auto shape_type = get_shape_type();
+
+    const float shape_probability = get_shape_prob();
+
+    if (shape_type == TriangleShape)
+    {
+        const Vector3d A = normalize(m_v0 - p);
+        const Vector3d B = normalize(m_v1 - p);
+        const Vector3d C = normalize(m_v2 - p);
+        const double area = compute_spherical_triangle_area(A, B, C);
+
+        Vector3d d = l - p;
+        const double d_norm2 = square_norm(d);
+        d /= d_norm2;
+
+        const double cos_theta = dot(-m_geometric_normal, d);
+        const double rcp_solid_angle = 1.0 / area;
+
+        const float pdf = rcp_solid_angle * cos_theta / d_norm2;
+        return shape_probability * pdf;
+    }
+    else if (shape_type == SphereShape)
+    {
+        return shape_probability * m_rcp_area;
+    }
+    else if (shape_type == RectShape)
+    {
+        return shape_probability * m_rcp_area;
+    }
+    else
+    {
+        assert(false);
+        return -1.0f;
+    }
 }
 
 void EmittingShape::make_shading_point(
@@ -139,24 +309,85 @@ void EmittingShape::make_shading_point(
     const Vector2f&         bary,
     const Intersector&      intersector) const
 {
-    assert(get_shape_type() == TriangleShape);
+    const ShadingRay ray(
+        point,
+        direction,
+        0.0,
+        0.0,
+        ShadingRay::Time(),
+        VisibilityFlags::CameraRay, 0);
 
-    intersector.make_surface_shading_point(
-        shading_point,
-        ShadingRay(
-            point,
-            direction,
-            0.0,
-            0.0,
-            ShadingRay::Time(),
-            VisibilityFlags::CameraRay, 0),
-        ShadingPoint::PrimitiveTriangle,    // note: we assume light samples are always on shapes (and not on curves)
-        bary,
-        get_assembly_instance(),
-        get_assembly_instance()->transform_sequence().get_earliest_transform(),
-        get_object_instance_index(),
-        get_primitive_index(),
-        m_shape_support_plane);
+    const auto shape_type = get_shape_type();
+
+    if (shape_type == TriangleShape)
+    {
+        intersector.make_triangle_shading_point(
+            shading_point,
+            ray,
+            bary,
+            get_assembly_instance(),
+            get_assembly_instance()->transform_sequence().get_earliest_transform(),
+            get_object_instance_index(),
+            get_primitive_index(),
+            m_shape_support_plane);
+    }
+    else if (shape_type == SphereShape)
+    {
+        // todo: compute P, N, Ng, uv, ...
+        // todo: pass them to the shading point.
+        assert(false);
+
+        intersector.make_procedural_surface_shading_point(
+            shading_point,
+            ray,
+            bary,
+            get_assembly_instance(),
+            get_assembly_instance()->transform_sequence().get_earliest_transform(),
+            get_object_instance_index(),
+            get_primitive_index());
+    }
+    else if (shape_type == RectShape)
+    {
+        // todo: compute P, N, Ng, uv, ...
+        // todo: pass them to the shading point.
+        assert(false);
+
+        intersector.make_procedural_surface_shading_point(
+            shading_point,
+            ray,
+            bary,
+            get_assembly_instance(),
+            get_assembly_instance()->transform_sequence().get_earliest_transform(),
+            get_object_instance_index(),
+            get_primitive_index());
+    }
+}
+
+void EmittingShape::estimate_average_radiance()
+{
+    // todo:
+    /*
+    if (constant EDF)
+        return EDF->radiance();
+
+    // Varying EDF or OSL emission case.
+    for i = 0..N:
+    {
+        s = random2d()
+        make_shading_point(shading_point, p, d, s, intersector);
+        radiance += eval EDF or ShaderGroup
+    }
+
+    radiance /= N;
+    return radiance;
+    */
+
+    m_average_radiance = 1.0f;
+}
+
+float EmittingShape::get_average_radiance() const
+{
+    return m_average_radiance;
 }
 
 }       // namespace renderer
