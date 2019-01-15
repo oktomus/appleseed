@@ -230,10 +230,10 @@ void EmittingShape::sample_solid_angle(
         // Project the point on the triangle.
         const double d = -dot(m_v0, m_geometric_normal);
         const double t = -(dot(m_geometric_normal, o) + d) / dot(m_geometric_normal, P);
-        light_sample.m_point = o + P * t;
+        light_sample.m_point = o + t * P;
 
         // Compute the probability.
-        Vector3d D = P - o;
+        Vector3d D = light_sample.m_point - o;
         const double D_norm2 = square_norm(D);
         D /= D_norm2;
 
