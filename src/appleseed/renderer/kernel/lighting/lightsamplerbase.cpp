@@ -300,7 +300,7 @@ void LightSamplerBase::collect_emitting_shapes(
         {
             // Fetch the materials assigned to this sphere.
             const Material* material =
-                front_materials.empty() ? front_materials[0] : nullptr;
+                front_materials.empty() ? nullptr : front_materials[0];
 
             // Skip spheres that don't emit light.
             if ((material == nullptr || !material->has_emission()))
