@@ -35,6 +35,7 @@
 
 // appleseed.foundation headers.
 #include "foundation/math/sampling/mappings.h"
+#include "foundation/math/intersection/raytrianglemt.h"
 
 using namespace foundation;
 
@@ -175,27 +176,26 @@ void EmittingShape::sample_uniform(
     }
     else if (shape_type == SphereShape)
     {
-        // todo: implement me...
-        // ...
-        assert(false);
+        // Set the barycentric coordinates.
+        light_sample.m_bary = s;
+
+        Vector3d p(sample_sphere_uniform(s));
+
+        // Set the world space shading and geometric normal.
+        light_sample.m_shading_normal = p;
+        light_sample.m_geometric_normal = p;
+
+        p *= m_v1.x; // Scale p by the radius
+        p += m_v0;   // Translate by the sphere center.
+
+        // Compute the world space position of the sample.
+        light_sample.m_point = p;
     }
     else if (shape_type == RectShape)
     {
         // Set the barycentric coordinates.
-        light_sample.m_bary[0] = static_cast<float>(s[0]);
-        light_sample.m_bary[1] = static_cast<float>(s[1]);
-
-        // Compute the world space position of the sample.
-        light_sample.m_point =
-              m_v0
-            + static_cast<double>(s[0]) * m_v1
-            + static_cast<double>(s[1]) * m_v2;
-
-        // Compute the world space shading normal at the position of the sample.
-        light_sample.m_shading_normal = m_geometric_normal;
-
-        // Set the world space geometric normal.
-        light_sample.m_geometric_normal = m_geometric_normal;
+        light_sample.m_bary = s;
+        // todo: set P, N, Ng, ... here
     }
     else
     {
@@ -207,6 +207,11 @@ void EmittingShape::sample_uniform(
 
     // Compute the probability density of this sample.
     light_sample.m_probability = shape_prob * get_rcp_area();
+}
+
+float EmittingShape::evaluate_pdf_uniform() const
+{
+    return get_shape_prob() * get_rcp_area();
 }
 
 void EmittingShape::sample_solid_angle(
@@ -225,23 +230,31 @@ void EmittingShape::sample_solid_angle(
         const Vector3d C = normalize(m_v2 - o);
 
         double solid_angle;
-        const Vector3d P = sample_spherical_triangle_uniform(A, B, C, Vector2d(s), &solid_angle);
+        const Vector3d d = sample_spherical_triangle_uniform(A, B, C, Vector2d(s), &solid_angle);
 
         // Project the point on the triangle.
-        const double d = -dot(m_v0, m_geometric_normal);
-        const double t = -(dot(m_geometric_normal, o) + d) / dot(m_geometric_normal, P);
-        light_sample.m_point = o + t * P;
+        TriangleMT<double>::RayType ray(o, d);
+        TriangleMT<double> triangle(m_v0, m_v1, m_v2);
 
-        // Compute the probability.
-        Vector3d D = light_sample.m_point - o;
-        const double D_norm2 = square_norm(D);
-        D /= D_norm2;
+        double t, u, v;
+        if (triangle.intersect(ray, t, u, v))
+        {
+            light_sample.m_point = o + t * d;
+            light_sample.m_bary[0] = static_cast<float>(u);
+            light_sample.m_bary[1] = static_cast<float>(v);
 
-        const double cos_theta = dot(-m_geometric_normal, D);
-        const double rcp_solid_angle = 1.0 / solid_angle;
+            // Compute the probability.
+            const double cos_theta = std::abs(dot(m_geometric_normal, d));
+            const double rcp_solid_angle = 1.0 / solid_angle;
 
-        const float pdf = rcp_solid_angle * cos_theta / D_norm2;
-        light_sample.m_probability = shape_prob * pdf;
+            const double pdf = rcp_solid_angle * cos_theta / square(t);
+            light_sample.m_probability = shape_prob * static_cast<float>(pdf);
+        }
+        else
+        {
+            assert(false);
+            light_sample.m_probability = 0.0f;
+        }
     }
     else if (shape_type == SphereShape)
     {
@@ -262,7 +275,7 @@ void EmittingShape::sample_solid_angle(
     light_sample.m_shape = this;
 }
 
-float EmittingShape::evaluate_pdf(
+float EmittingShape::evaluate_pdf_solid_angle(
     const Vector3d&         p,
     const Vector3d&         l) const
 {
@@ -278,22 +291,24 @@ float EmittingShape::evaluate_pdf(
         const double area = compute_spherical_triangle_area(A, B, C);
 
         Vector3d d = l - p;
-        const double d_norm2 = square_norm(d);
-        d /= d_norm2;
+        const double d_norm = norm(d);
+        d /= d_norm;
 
-        const double cos_theta = dot(-m_geometric_normal, d);
+        const double cos_theta = std::abs(dot(m_geometric_normal, d));
         const double rcp_solid_angle = 1.0 / area;
 
-        const float pdf = rcp_solid_angle * cos_theta / d_norm2;
-        return shape_probability * pdf;
+        const double pdf = rcp_solid_angle * cos_theta / square(d_norm);
+        return shape_probability * static_cast<float>(pdf);
     }
     else if (shape_type == SphereShape)
     {
-        return shape_probability * m_rcp_area;
+        // todo: implement me...
+        return evaluate_pdf_uniform();
     }
     else if (shape_type == RectShape)
     {
-        return shape_probability * m_rcp_area;
+        // todo: implement me...
+        return evaluate_pdf_uniform();
     }
     else
     {
@@ -383,11 +398,6 @@ void EmittingShape::estimate_average_radiance()
     */
 
     m_average_radiance = 1.0f;
-}
-
-float EmittingShape::get_average_radiance() const
-{
-    return m_average_radiance;
 }
 
 }       // namespace renderer

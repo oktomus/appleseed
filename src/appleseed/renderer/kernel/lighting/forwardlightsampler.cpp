@@ -138,7 +138,7 @@ float ForwardLightSampler::evaluate_pdf(const ShadingPoint& light_shading_point)
         return 0.0f;
 
     const EmittingShape* shape = *shape_ptr;
-    return shape->get_shape_prob() * shape->get_rcp_area();
+    return shape->evaluate_pdf_uniform();
 }
 
 void ForwardLightSampler::sample_non_physical_lights(

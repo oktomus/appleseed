@@ -132,13 +132,15 @@ class EmittingShape
         const float                 shape_prob,
         LightSample&                light_sample) const;
 
+    float evaluate_pdf_uniform() const;
+
     void sample_solid_angle(
         const ShadingPoint&         shading_point,
         const foundation::Vector2f& s,
         const float                 shape_prob,
         LightSample&                light_sample) const;
 
-    float evaluate_pdf(
+    float evaluate_pdf_solid_angle(
         const foundation::Vector3d& p,
         const foundation::Vector3d& l) const;
 
@@ -227,6 +229,11 @@ inline void EmittingShape::set_shape_prob(const float prob)
 inline const Material* EmittingShape::get_material() const
 {
     return m_material;
+}
+
+inline float EmittingShape::get_average_radiance() const
+{
+    return m_average_radiance;
 }
 
 }       // namespace renderer

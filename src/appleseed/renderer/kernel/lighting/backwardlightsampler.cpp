@@ -121,7 +121,7 @@ float BackwardLightSampler::evaluate_pdf(
         return 0.0f;
 
     const EmittingShape* shape = *shape_ptr;
-    return shape->evaluate_pdf(
+    return shape->evaluate_pdf_solid_angle(
         surface_shading_point.get_point(),
         light_shading_point.get_point());
 }
