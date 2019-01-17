@@ -415,8 +415,12 @@ void Intersector::make_procedural_surface_shading_point(
     shading_point.m_assembly_instance_transform_seq = &assembly_instance->transform_sequence();
     shading_point.m_object_instance_index = object_instance_index;
     shading_point.m_primitive_index = primitive_index;
+    shading_point.m_point = shading_ray.m_org;
+    shading_point.m_geometric_normal = shading_point.m_original_shading_normal = shading_ray.m_dir;
 
     shading_point.m_members = ShadingPoint::HasUV0;
+    shading_point.m_members |= ShadingPoint::HasPoint;
+    shading_point.m_members |= ShadingPoint::HasGeometricNormal | ShadingPoint::HasOriginalShadingNormal;
 }
 
 void Intersector::make_volume_shading_point(

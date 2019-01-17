@@ -34,6 +34,7 @@
 #include "renderer/kernel/lighting/lightsample.h"
 
 // appleseed.foundation headers.
+#include "foundation/math/basis.h"
 #include "foundation/math/sampling/mappings.h"
 #include "foundation/math/intersection/raytrianglemt.h"
 
@@ -214,6 +215,25 @@ float EmittingShape::evaluate_pdf_uniform() const
     return get_shape_prob() * get_rcp_area();
 }
 
+namespace
+{
+    // Compute the cartesian coordinates of the given spherical point.
+    // Y and Z are swapped because of the projection frame.
+    // https://en.wikipedia.org/wiki/Spherical_coordinate_system#Cartesian_coordinates
+    Vector3d spherical_to_cartesian(const double theta, const double phi)
+    {
+        const double sintheta   = sin(theta);
+        const double costheta   = cos(theta);
+        const double sinphi     = sin(phi);
+        const double cosphi     = cos(phi);
+
+        return Vector3d(
+            sintheta * cosphi,
+            costheta,
+            sintheta * sinphi);
+    }
+}
+
 void EmittingShape::sample_solid_angle(
     const ShadingPoint&     shading_point,
     const Vector2f&         s,
@@ -258,8 +278,80 @@ void EmittingShape::sample_solid_angle(
     }
     else if (shape_type == SphereShape)
     {
-        // todo: implement me...
-        sample_uniform(s, shape_prob, light_sample);
+        // Source:
+        // https://schuttejoe.github.io/post/arealightsampling/
+        const Vector3d& center  = m_v0;
+        const Vector3d& origin  = shading_point.get_point();
+        const double    radius  = m_v1[0];
+
+        Vector3d        w               = center - origin;
+        const double    dist_to_center  = norm(w);
+
+        // Normalize center to origin vector.
+        w *= 1.0 / dist_to_center;
+
+        // Create a orthogonal frame that simplifies the projection.
+        const Basis3d frame(w);
+        const Vector3d& u = frame.get_tangent_u();
+        const Vector3d& v = frame.get_tangent_v();
+
+        // Compute the matrix groing from local to world space.
+        Matrix3d world;
+        world[0] = u[0];
+        world[1] = u[1];
+        world[2] = u[2];
+        world[3] = w[0];
+        world[4] = w[1];
+        world[5] = w[2];
+        world[6] = v[0];
+        world[7] = v[1];
+        world[8] = v[2];
+
+        // Compute local space sample position.
+        const double q = sqrt(1.0 - square(radius / dist_to_center));
+        const double    theta   = acos(1.0 - static_cast<double>(s[0]) + static_cast<double>(s[0]) * q);
+        const double    phi     = TwoPi<double>() * static_cast<double>(s[1]);
+        const Vector3d  local   = spherical_to_cartesian(theta, phi);
+
+        // Compute world space sample position.
+        {
+            const Vector3d nwp = local * world;
+            const Vector3d x = origin - center;
+
+            const double b = 2.0 * dot(nwp, x);
+            const double c = dot(x, x) - radius * radius;
+
+            double t;
+
+            const double root = b * b - 4.0 * c;
+            if(root < 0.0)
+            {
+                // Project x onto v.
+                const Vector3d projected_x = (dot(x, nwp) / dot(nwp, nwp)) * nwp;
+                t = norm(projected_x);
+            }
+            else if(root == 0.0)
+            {
+                t = -0.5 * b;
+            }
+            else
+            {
+                const double q = (b > 0.0) ? -0.5 * (b + sqrt(root)) : -0.5 * (b - sqrt(root));
+                const double t0 = q;
+                const double t1 = c / q;
+                t = min(t0, t1);
+            }
+
+            light_sample.m_point = origin + t * nwp;
+        }
+
+        // Compute the normal at the sample.
+        light_sample.m_shading_normal = normalize(light_sample.m_point - m_v0);
+        light_sample.m_geometric_normal = light_sample.m_shading_normal;
+
+        // Compute the probability.
+        const float pdf = 1.0f / (TwoPi<float>() * (1.0f - static_cast<float>(q)));
+        light_sample.m_probability = shape_prob * pdf;
     }
     else if (shape_type == RectShape)
     {
