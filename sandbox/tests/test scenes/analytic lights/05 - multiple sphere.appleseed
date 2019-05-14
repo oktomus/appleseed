@@ -44,6 +44,50 @@
                     1.000000
                 </alpha>
             </color>
+            <color name="light_blue">
+                <parameter name="color_space" value="srgb" />
+                <parameter name="multiplier" value="1.0" />
+                <parameter name="wavelength_range" value="400.0 700.0" />
+                <values>
+                    0.400000 0.709804 1.000000
+                </values>
+                <alpha>
+                    1.000000
+                </alpha>
+            </color>
+            <color name="light_green">
+                <parameter name="color_space" value="srgb" />
+                <parameter name="multiplier" value="1.0" />
+                <parameter name="wavelength_range" value="400.0 700.0" />
+                <values>
+                    0.494118 0.960784 0.627451
+                </values>
+                <alpha>
+                    1.000000
+                </alpha>
+            </color>
+            <color name="light_orange">
+                <parameter name="color_space" value="srgb" />
+                <parameter name="multiplier" value="1.0" />
+                <parameter name="wavelength_range" value="400.0 700.0" />
+                <values>
+                    1.000000 0.721569 0.400000
+                </values>
+                <alpha>
+                    1.000000
+                </alpha>
+            </color>
+            <color name="light_white">
+                <parameter name="color_space" value="srgb" />
+                <parameter name="multiplier" value="1.0" />
+                <parameter name="wavelength_range" value="400.0 700.0" />
+                <values>
+                    1.000000 1.000000 1.000000
+                </values>
+                <alpha>
+                    1.000000
+                </alpha>
+            </color>
             <color name="red">
                 <parameter name="color_space" value="spectral" />
                 <parameter name="wavelength_range" value="400 700" />
@@ -87,7 +131,6 @@
             </bsdf>
             <bsdf name="light_material_brdf" model="lambertian_brdf">
                 <parameter name="reflectance" value="white" />
-                <parameter name="reflectance_multiplier" value="1" />
             </bsdf>
             <bsdf name="red_material_brdf" model="lambertian_brdf">
                 <parameter name="reflectance" value="red" />
@@ -95,27 +138,78 @@
             <bsdf name="white_material_brdf" model="lambertian_brdf">
                 <parameter name="reflectance" value="white" />
             </bsdf>
-            <edf name="light_material_edf" model="diffuse_edf">
+            <edf name="sphere_blue_light_edf" model="diffuse_edf">
                 <parameter name="cast_indirect_light" value="true" />
                 <parameter name="exposure" value="0.0" />
                 <parameter name="importance_multiplier" value="1.0" />
                 <parameter name="light_near_start" value="0.0" />
-                <parameter name="radiance" value="1.0" />
-                <parameter name="radiance_multiplier" value="1.0" />
+                <parameter name="radiance" value="light_blue" />
+                <parameter name="radiance_multiplier" value="2" />
+            </edf>
+            <edf name="sphere_green_light_edf" model="diffuse_edf">
+                <parameter name="cast_indirect_light" value="true" />
+                <parameter name="exposure" value="0.0" />
+                <parameter name="importance_multiplier" value="1.0" />
+                <parameter name="light_near_start" value="0.0" />
+                <parameter name="radiance" value="light_green" />
+                <parameter name="radiance_multiplier" value="2" />
+            </edf>
+            <edf name="sphere_orange_light_edf" model="diffuse_edf">
+                <parameter name="cast_indirect_light" value="true" />
+                <parameter name="exposure" value="0.0" />
+                <parameter name="importance_multiplier" value="1.0" />
+                <parameter name="light_near_start" value="0.0" />
+                <parameter name="radiance" value="light_orange" />
+                <parameter name="radiance_multiplier" value="2" />
+            </edf>
+            <edf name="sphere_white_light_edf" model="diffuse_edf">
+                <parameter name="cast_indirect_light" value="true" />
+                <parameter name="exposure" value="0.0" />
+                <parameter name="importance_multiplier" value="1.0" />
+                <parameter name="light_near_start" value="0.0" />
+                <parameter name="radiance" value="light_white" />
+                <parameter name="radiance_multiplier" value="2" />
             </edf>
             <surface_shader name="physical_shader" model="physical_surface_shader" />
             <material name="green_material" model="generic_material">
                 <parameter name="bsdf" value="green_material_brdf" />
                 <parameter name="surface_shader" value="physical_shader" />
             </material>
-            <material name="light_material" model="generic_material">
-                <parameter name="bsdf" value="light_material_brdf" />
-                <parameter name="edf" value="light_material_edf" />
-                <parameter name="surface_shader" value="physical_shader" />
-            </material>
             <material name="red_material" model="generic_material">
                 <parameter name="bsdf" value="red_material_brdf" />
                 <parameter name="surface_shader" value="physical_shader" />
+            </material>
+            <material name="sphere_blue_light_material" model="generic_material">
+                <parameter name="bsdf" value="light_material_brdf" />
+                <parameter name="bump_amplitude" value="1.0" />
+                <parameter name="bump_offset" value="0.5" />
+                <parameter name="displacement_method" value="bump" />
+                <parameter name="edf" value="sphere_blue_light_edf" />
+                <parameter name="normal_map_up" value="z" />
+            </material>
+            <material name="sphere_green_light_material" model="generic_material">
+                <parameter name="bsdf" value="light_material_brdf" />
+                <parameter name="bump_amplitude" value="1.0" />
+                <parameter name="bump_offset" value="0.5" />
+                <parameter name="displacement_method" value="bump" />
+                <parameter name="edf" value="sphere_green_light_edf" />
+                <parameter name="normal_map_up" value="z" />
+            </material>
+            <material name="sphere_orange_light_material" model="generic_material">
+                <parameter name="bsdf" value="light_material_brdf" />
+                <parameter name="bump_amplitude" value="1.0" />
+                <parameter name="bump_offset" value="0.5" />
+                <parameter name="displacement_method" value="bump" />
+                <parameter name="edf" value="sphere_orange_light_edf" />
+                <parameter name="normal_map_up" value="z" />
+            </material>
+            <material name="sphere_white_light_material" model="generic_material">
+                <parameter name="bsdf" value="light_material_brdf" />
+                <parameter name="bump_amplitude" value="1.0" />
+                <parameter name="bump_offset" value="0.5" />
+                <parameter name="displacement_method" value="bump" />
+                <parameter name="edf" value="sphere_white_light_edf" />
+                <parameter name="normal_map_up" value="z" />
             </material>
             <material name="white_material" model="generic_material">
                 <parameter name="bsdf" value="white_material_brdf" />
@@ -136,14 +230,8 @@
             <object name="right_wall" model="mesh_object">
                 <parameter name="filename" value="right_wall.obj" />
             </object>
-            <object name="short_block" model="mesh_object">
-                <parameter name="filename" value="short_block.obj" />
-            </object>
             <object name="sphere" model="sphere_object">
-                <parameter name="radius" value="0.1" />
-            </object>
-            <object name="tall_block" model="mesh_object">
-                <parameter name="filename" value="tall_block.obj" />
+                <parameter name="radius" value="0.06" />
             </object>
             <object_instance name="back_wall_inst" object="back_wall.back_wall">
                 <transform>
@@ -200,17 +288,61 @@
                 </transform>
                 <assign_material slot="green_material" side="front" material="green_material" />
             </object_instance>
-            <object_instance name="sphere_inst" object="sphere">
+            <object_instance name="sphere_blue_inst" object="sphere">
+                <parameter name="medium_priority" value="0" />
+                <parameter name="ray_bias_distance" value="0.0" />
+                <parameter name="ray_bias_method" value="none" />
                 <transform>
                     <matrix>
-                        1.000000000000000 0.000000000000000 0.000000000000000 0.270000000000000
-                        0.000000000000000 1.000000000000000 0.000000000000000 0.270000000000000
-                        0.000000000000000 0.000000000000000 1.000000000000000 0.270000000000000
+                        1.000000000000000 0.000000000000000 0.000000000000000 0.460000000000000
+                        0.000000000000000 1.000000000000000 0.000000000000000 0.100000000000000
+                        0.000000000000000 0.000000000000000 1.000000000000000 0.100000000000000
                         0.000000000000000 0.000000000000000 0.000000000000000 1.000000000000000
                     </matrix>
                 </transform>
-                <assign_material slot="default" side="front" material="light_material" />
-                <assign_material slot="white_material" side="front" material="sphere_light_material" />
+                <assign_material slot="default" side="front" material="sphere_blue_light_material" />
+            </object_instance>
+            <object_instance name="sphere_green_inst" object="sphere">
+                <parameter name="medium_priority" value="0" />
+                <parameter name="ray_bias_distance" value="0.0" />
+                <parameter name="ray_bias_method" value="none" />
+                <transform>
+                    <matrix>
+                        1.000000000000000 0.000000000000000 0.000000000000000 0.070000000000000
+                        0.000000000000000 1.000000000000000 0.000000000000000 0.450000000000000
+                        0.000000000000000 0.000000000000000 1.000000000000000 0.000000000000000
+                        0.000000000000000 0.000000000000000 0.000000000000000 1.000000000000000
+                    </matrix>
+                </transform>
+                <assign_material slot="default" side="front" material="sphere_green_light_material" />
+            </object_instance>
+            <object_instance name="sphere_orange_inst" object="sphere">
+                <parameter name="medium_priority" value="0" />
+                <parameter name="ray_bias_distance" value="0.0" />
+                <parameter name="ray_bias_method" value="none" />
+                <transform>
+                    <matrix>
+                        1.000000000000000 0.000000000000000 0.000000000000000 0.460000000000000
+                        0.000000000000000 1.000000000000000 0.000000000000000 0.450000000000000
+                        0.000000000000000 0.000000000000000 1.000000000000000 0.250000000000000
+                        0.000000000000000 0.000000000000000 0.000000000000000 1.000000000000000
+                    </matrix>
+                </transform>
+                <assign_material slot="default" side="front" material="sphere_orange_light_material" />
+            </object_instance>
+            <object_instance name="sphere_white_inst" object="sphere">
+                <parameter name="medium_priority" value="0" />
+                <parameter name="ray_bias_distance" value="0.0" />
+                <parameter name="ray_bias_method" value="none" />
+                <transform>
+                    <matrix>
+                        1.000000000000000 0.000000000000000 0.000000000000000 0.070000000000000
+                        0.000000000000000 1.000000000000000 0.000000000000000 0.250000000000000
+                        0.000000000000000 0.000000000000000 1.000000000000000 0.450000000000000
+                        0.000000000000000 0.000000000000000 0.000000000000000 1.000000000000000
+                    </matrix>
+                </transform>
+                <assign_material slot="default" side="front" material="sphere_white_light_material" />
             </object_instance>
         </assembly>
         <assembly_instance name="assembly_inst" assembly="assembly">

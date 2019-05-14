@@ -140,7 +140,6 @@ class EmittingShape
     float get_area() const;
     float get_rcp_area() const;
 
-    float get_shape_prob() const;
     void set_shape_prob(const float prob);
 
     const Material* get_material() const;
@@ -155,6 +154,16 @@ class EmittingShape
         LightSample&                light_sample) const;
 
     float evaluate_pdf_uniform() const;
+    
+    bool sample_solid_angle(
+        const ShadingPoint&         shading_point,
+        const foundation::Vector2f& s,
+        const float                 shape_prob,
+        LightSample&                light_sample)const;
+
+    float evaluate_pdf_solid_angle(
+        const ShadingPoint&         shading_point,
+        const foundation::Vector3d& light_point) const;
 
     void make_shading_point(
         ShadingPoint&               shading_point,
@@ -196,6 +205,7 @@ class EmittingShape
     {
         foundation::Vector3d    m_center;                       // world space center of the sphere
         double                  m_radius;                       // sphere radius
+        float                   m_stored_prob;
     };
 
     struct Disk
@@ -273,11 +283,6 @@ inline float EmittingShape::get_area() const
 inline float EmittingShape::get_rcp_area() const
 {
     return m_rcp_area;
-}
-
-inline float EmittingShape::get_shape_prob() const
-{
-    return m_shape_prob;
 }
 
 inline void EmittingShape::set_shape_prob(const float prob)

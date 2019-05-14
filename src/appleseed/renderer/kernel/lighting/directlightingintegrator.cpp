@@ -168,11 +168,15 @@ void DirectLightingIntegrator::compute_outgoing_radiance_light_sampling_low_vari
         {
             // Sample the light set.
             LightSample sample;
-            m_light_sampler.sample_lightset(
+
+            if (!m_light_sampler.sample_lightset(
                 m_time,
                 sampling_context.next2<Vector3f>(),
                 m_material_sampler.get_shading_point(),
-                sample);
+                sample))
+            {
+                continue;
+            }
 
             // Add the contribution of the chosen light.
             if (sample.m_shape)

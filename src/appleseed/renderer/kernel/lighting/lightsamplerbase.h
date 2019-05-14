@@ -47,6 +47,7 @@ namespace renderer      { class Assembly; }
 namespace renderer      { class AssemblyInstance; }
 namespace renderer      { class Material; }
 namespace renderer      { class MaterialArray; }
+namespace renderer      { class ShadingPoint; }
 
 namespace renderer
 {
@@ -141,9 +142,15 @@ class LightSamplerBase
         const MaterialArray&                materials);
 
     // Sample the set of emitting shapes.
-    void sample_emitting_shapes(
+    void sample_emitting_shapes_uniform(
         const ShadingRay::Time&             time,
         const foundation::Vector3f&         s,
+        LightSample&                        light_sample) const;
+
+    bool sample_emitting_shapes_solid_angle(
+        const ShadingRay::Time&             time,
+        const foundation::Vector3f&         s,
+        const ShadingPoint&                 shading_point,
         LightSample&                        light_sample) const;
 };
 
