@@ -418,16 +418,59 @@ namespace {
         const Vector3f&     surface_normal,
         const Vector3f&     light_point,
         const float         shape_prob,
+        const float         area,
         const SphericalCap& cap)
     {
-        const float cosine = dot(surface_normal, normalize(light_point - surface_point));
-        const float rcp_solid_angle = 1.0f / cap.solidAngle;
+        int algo = 6;
 
-        const float pdf = rcp_solid_angle * cosine;//static_cast<double>(cap.solidAngle) * cos_theta;
-        return shape_prob * pdf;
+        float pdf, cosine, rcp_solid_angle, cos_theta;
+
+        switch (algo)
+        {
+        case 0:
+            // brighter on the edge of planes
+            return (1.0f / cap.solidAngle);
+        case 1:
+            // not working
+            // complete mess -> render fails
+            return (1.0f / cap.solidAngle) * dot(-surface_normal, normalize(light_point - surface_point));
+        case 2:
+            //From the realtime PCS paper 
+            // Dull image, but seems brighter on the edges
+            cosine = dot(surface_normal, normalize(light_point - surface_point));
+            return cosine * cap.solidAngle;
+        case 3:
+            // pretty good, but brighter on the center of the planes
+            cosine = dot(surface_normal, normalize(light_point - surface_point));
+            rcp_solid_angle = 1.0f / cap.solidAngle;
+
+            pdf = rcp_solid_angle * cosine;
+            return (1.0f / area) * shape_prob * pdf;
+        case 4:
+            // complete mess, like algo 1
+            cos_theta = -dot(surface_normal, normalize(light_point - surface_point));
+            rcp_solid_angle = 1.0f / cap.solidAngle;
+
+            pdf = rcp_solid_angle * cos_theta / square_distance(light_point, surface_point);
+            return area * static_cast<float>(pdf);
+        case 5:
+            // pretty good, but a bit too dark
+            cosine = dot(surface_normal, normalize(light_point - surface_point));
+            rcp_solid_angle = 1.0f / cap.solidAngle;
+
+            pdf = rcp_solid_angle * cosine / sqrt(square_distance(light_point, surface_point));
+            return (1.0f / area) * shape_prob * pdf;
+        case 6:
+            cosine = dot(surface_normal, normalize(light_point - surface_point));
+            rcp_solid_angle = 1.0f / cap.solidAngle;
+
+            pdf = rcp_solid_angle * cosine / square_distance(light_point, surface_point);
+            return pdf;
+        default:
+            return 1.0f;
+        }
     }
 }
-
 
 bool EmittingShape::sample_solid_angle(
     const ShadingPoint&     shading_point,
@@ -458,20 +501,11 @@ bool EmittingShape::sample_solid_angle(
     }
     else if (shape_type == SphereShape)
     {
-        const Vector3f sphere_center(
-            static_cast<float>(m_geom.m_sphere.m_center.x),
-            static_cast<float>(m_geom.m_sphere.m_center.y),
-            static_cast<float>(m_geom.m_sphere.m_center.z));
+        const Vector3f sphere_center(m_geom.m_sphere.m_center);
 
         const float    sphere_radius = static_cast<float>(m_geom.m_sphere.m_radius);
-        const Vector3f surface_point(
-            static_cast<float>(shading_point.get_point().x),
-            static_cast<float>(shading_point.get_point().y),
-            static_cast<float>(shading_point.get_point().z));
-        const Vector3f surface_normal(
-            static_cast<float>(shading_point.get_shading_normal().x),
-            static_cast<float>(shading_point.get_shading_normal().y),
-            static_cast<float>(shading_point.get_shading_normal().z));
+        const Vector3f surface_point(shading_point.get_point());
+        const Vector3f surface_normal(shading_point.get_shading_normal());
 
         SphericalCap cap;
         prepareSphericalCapSampling(cap, sphere_center - surface_point, sphere_radius);
@@ -491,15 +525,11 @@ bool EmittingShape::sample_solid_angle(
         assert(is_normalized(n));
         light_sample.m_param_coords = s;
 
-        light_sample.m_shading_normal.x = static_cast<double>(n.x);
-        light_sample.m_shading_normal.y = static_cast<double>(n.y);
-        light_sample.m_shading_normal.z = static_cast<double>(n.z);
-        light_sample.m_geometric_normal = light_sample.m_shading_normal;
+        light_sample.m_shading_normal = Vector3d(n);
+        light_sample.m_geometric_normal = Vector3d(n);
 
         // Compute the world space position of the sample.
-        light_sample.m_point.x = static_cast<double>(sampled_point.x);
-        light_sample.m_point.y = static_cast<double>(sampled_point.y);
-        light_sample.m_point.z = static_cast<double>(sampled_point.z);
+        light_sample.m_point = Vector3d(sampled_point);
         light_sample.m_probability = evaluate_sphere_pdf_solid_angle(
             sphere_center,
             sphere_radius,
@@ -507,6 +537,7 @@ bool EmittingShape::sample_solid_angle(
             surface_normal,
             sampled_point,
             m_shape_prob,
+            m_area,
             cap);
 
         return true;
@@ -547,24 +578,12 @@ float EmittingShape::evaluate_pdf_solid_angle(
     }
     else if (shape_type == SphereShape)
     {
-        const Vector3f sphere_center(
-            static_cast<float>(m_geom.m_sphere.m_center.x),
-            static_cast<float>(m_geom.m_sphere.m_center.y),
-            static_cast<float>(m_geom.m_sphere.m_center.x));
+        const Vector3f sphere_center(m_geom.m_sphere.m_center);
 
         const float    sphere_radius = static_cast<float>(m_geom.m_sphere.m_radius);
-        const Vector3f surface_point(
-            static_cast<float>(shading_point.get_point().x),
-            static_cast<float>(shading_point.get_point().y),
-            static_cast<float>(shading_point.get_point().z));
-        const Vector3f surface_normal(
-            static_cast<float>(shading_point.get_shading_normal().x),
-            static_cast<float>(shading_point.get_shading_normal().y),
-            static_cast<float>(shading_point.get_shading_normal().z));
-        const Vector3f sampled_point(
-            static_cast<float>(light_point.x),
-            static_cast<float>(light_point.y),
-            static_cast<float>(light_point.z));
+        const Vector3f surface_point(shading_point.get_point());
+        const Vector3f surface_normal(shading_point.get_shading_normal());
+        const Vector3f sampled_point(light_point);
 
         SphericalCap cap;
         prepareSphericalCapSampling(cap, sphere_center - surface_point, sphere_radius);
@@ -576,6 +595,7 @@ float EmittingShape::evaluate_pdf_solid_angle(
             surface_normal,
             sampled_point,
             m_shape_prob,
+            m_area,
             cap);
     }
     else if (shape_type == DiskShape)
