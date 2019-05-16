@@ -597,6 +597,7 @@ namespace
 
             void on_hit(const PathVertex& vertex)
             {
+                return;
                 // Emitted light contribution.
                 if ((!m_omit_emitted_light || m_params.m_enable_caustics) &&
                     vertex.m_edf &&

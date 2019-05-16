@@ -146,7 +146,8 @@ BackwardLightSampler::BackwardLightSampler(
                     importance_multiplier = edf->get_uncached_importance_multiplier();
 
                 // Compute the probability density of this shape.
-                const float shape_importance = m_params.m_importance_sampling ? area : 1.0f;
+                //const float shape_importance = m_params.m_importance_sampling ? area : 1.0f;
+                const float shape_importance = 1.0f;
                 const float shape_prob = shape_importance * importance_multiplier;
 
                 // Insert the light-emitting shape into the CDF.

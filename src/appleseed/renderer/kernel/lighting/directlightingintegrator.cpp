@@ -74,6 +74,7 @@ namespace renderer
 //       compute_outgoing_radiance_light_sampling_low_variance
 //
 
+#include <iostream>
 DirectLightingIntegrator::DirectLightingIntegrator(
     const ShadingContext&           shading_context,
     const BackwardLightSampler&     light_sampler,
@@ -213,21 +214,23 @@ void DirectLightingIntegrator::compute_outgoing_radiance_combined_sampling_low_v
     DirectShadingComponents&        radiance,
     LightPathStream*                light_path_stream) const
 {
+    /*
     compute_outgoing_radiance_material_sampling(
         sampling_context,
         MISPower2,
         outgoing,
         radiance);
 
-    DirectShadingComponents radiance_light_sampling;
+    DirectShadingComponents :radiance_light_sampling;
     compute_outgoing_radiance_light_sampling_low_variance(
         sampling_context,
         MISPower2,
         outgoing,
         radiance_light_sampling,
         light_path_stream);
+        */
 
-    radiance += radiance_light_sampling;
+    //radiance += radiance_light_sampling;
 }
 
 void DirectLightingIntegrator::take_single_material_sample(

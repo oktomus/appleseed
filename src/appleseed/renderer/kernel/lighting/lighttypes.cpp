@@ -1,5 +1,6 @@
 
-#define DO_UNIFORM
+// #define DO_UNIFORM
+
 //
 // This source file is part of appleseed.
 // Visit https://appleseedhq.net/ for additional information and resources.
@@ -407,8 +408,26 @@ namespace {
         local.y = radius * sin(M_PI2_FLOAT*randomNumbers.y);
         // Now turn that into a world space sample
         return local.x*cap.tangent + local.y*cap.bitangent + local.z*cap.normal;
+        //return local;
+    }
+
+    float evaluate_sphere_pdf_solid_angle(
+        const Vector3f&     sphere_center,
+        const float         sphere_radius,
+        const Vector3f&     surface_point,
+        const Vector3f&     surface_normal,
+        const Vector3f&     light_point,
+        const float         shape_prob,
+        const SphericalCap& cap)
+    {
+        const float cosine = dot(surface_normal, normalize(light_point - surface_point));
+        const float rcp_solid_angle = 1.0f / cap.solidAngle;
+
+        const float pdf = rcp_solid_angle * cosine;//static_cast<double>(cap.solidAngle) * cos_theta;
+        return shape_prob * pdf;
     }
 }
+
 
 bool EmittingShape::sample_solid_angle(
     const ShadingPoint&     shading_point,
@@ -429,155 +448,20 @@ bool EmittingShape::sample_solid_angle(
     {
         assert(false);
         sample_uniform(s, shape_prob, light_sample);
+        return true;
     }
     else if (shape_type == RectangleShape)
     {
         assert(false);
         sample_uniform(s, shape_prob, light_sample);
+        return true;
     }
     else if (shape_type == SphereShape)
     {
-        // todo: do uniform sampling if the surface point is inside the sphere.
-        // wip
-        /*
-
-        // c: sphere center.
-        const Vector3d& c = m_geom.m_sphere.m_center;
-
-        // r: sphere radius.
-        const float r = m_geom.m_sphere.m_radius;
-
-        // x: the point being illuminated.
-        const Vector3d& x = shading_point.get_point();
-
-        // Build a basis (w, v, u) with w facing in the direction of the sphere.
-        const Vector3d w = normalize(c - x);
-        */
-
-        /*
-        const Vector3d& c = m_geom.m_sphere.m_center;
-        const Vector3d& x = shading_point.get_point();
-        const double    r = m_geom.m_sphere.m_radius;
-
-        const double dist_to_center = norm(c - x);
-        const Vector3d w = normalize(c - x);
-
-        // Create a orthogonal frame that simplifies the projection.
-        const Basis3d frame(w);
-        const Vector3d& u = frame.get_tangent_u();
-        const Vector3d& v = frame.get_tangent_v();
-
-        // Compute the matrix groing from local to world space.
-        Matrix3d world;
-        world[0] = u[0];
-        world[1] = u[1];
-        world[2] = u[2];
-        world[3] = w[0];
-        world[4] = w[1];
-        world[5] = w[2];
-        world[6] = v[0];
-        world[7] = v[1];
-        world[8] = v[2];
-
-        // Compute local space sample position.
-        const double q = sqrt(1.0 - square(r / dist_to_center));
-        const double    theta = acos(1.0 - static_cast<double>(s[0]) + static_cast<double>(s[0]) * q);
-        const double    phi = TwoPi<double>() * static_cast<double>(s[1]);
-        const Vector3d  local = Vector3d::make_unit_vector(theta, phi);
-
-        // Compute world space sample position.
-        const Vector3d nwp = local * world;
-        const Vector3d xp = x - c;
-
-        const double b = 2.0 * dot(nwp, xp);
-        const double cd = dot(xp, xp) - r * r;
-
-        double t;
-
-        const double root = b * b - 4.0 * cd;
-        if (root < 0.0)
-        {
-            // Project x onto v.
-            const Vector3d projected_x = (dot(xp, nwp) / dot(nwp, nwp)) * nwp;
-            t = norm(projected_x);
-        }
-        else if (root == 0.0)
-        {
-            t = -0.5 * b;
-        }
-        else
-        {
-            const double q = (b > 0.0) ? -0.5 * (b + sqrt(root)) : -0.5 * (b - sqrt(root));
-            const double t0 = q;
-            const double t1 = cd / q;
-            t = min(t0, t1);
-        }
-
-        light_sample.m_point = x + t * nwp;
-
-        // Compute the normal at the sample.
-        light_sample.m_shading_normal = normalize(
-            light_sample.m_point - m_geom.m_sphere.m_center);
-        light_sample.m_geometric_normal = light_sample.m_shading_normal;
-        light_sample.m_param_coords[0] = static_cast<float>(theta);
-        light_sample.m_param_coords[1] = static_cast<float>(phi);
-
-        // Compute the probability.
-        const float pdf = 1.0f / (TwoPi<float>() * (1.0f - static_cast<float>(q)));
-        light_sample.m_probability = shape_prob * pdf;
-        */
-        /*
-        const Vector3d& sphere_center = m_geom.m_sphere.m_center;
-        const double    sphere_radius = m_geom.m_sphere.m_radius;
-        const Vector3d& surface_point = shading_point.get_point();
-        const Vector3d& surface_normal = shading_point.get_shading_normal();
-
-        // Create a coordinate system.
-        //const double dist_to_center = norm(sphere_center - surface_point);
-        //const Vector3d wc = normalize(sphere_center - surface_point);
-        const Vector3d basisZ = surface_normal;
-        const Vector3d basisY = normalize(cross(basisZ, (sphere_center - surface_point)));
-        const Vector3d basisX = cross(basisY, basisZ);
-        -
-        // Project a direction.
-        const double s0 = static_cast<float>(s[0]);
-        const double s1 = static_cast<float>(s[1]);
-        const Vector3d wdir = basisX * s0 + basisY * s1 + basisZ * sqrt(1.0 - square(s0) - square(s1));
-
-        // Compute aperture parameters.
-        const Vector3d apterure_center = normalize(sphere_center - surface_point);
-        const double aperture_alpha = std::asin(sphere_radius / norm(sphere_center - surface_point));
-        const double apeture_beta = std::asin(dot(basisZ, apterure_center - surface_point));
-
-        // Create the map.
-        PSCM::PSCMaps<double> map;
-        map.initialize(aperture_alpha, apeture_beta, true);
-        const double area = map.get_area();
-        double outx, outy;
-        map.eval_map(s[0], s[1], outx, outy);
-        const Vector3d sample_dir_wc = outx * basisX + outy * basisY + sqrt(1.0 - outx * outx - outy * outy) * basisZ;
-
-        const Ray3d r(surface_point, sample_dir_wc);
-        double t;
-        const bool intersects = intersect_sphere(r, sphere_center, sphere_radius, t);
-        assert(intersects);
-        const Vector3d p = r.point_at(t);
-        const Vector3d n = p - sphere_center;
-        assert(is_normalized(n));
-        light_sample.m_param_coords = s;
-
-        // Set the world space shading and geometric normals.
-        light_sample.m_shading_normal = n;
-        light_sample.m_geometric_normal = n;
-
-        // Compute the world space position of the sample.
-        light_sample.m_point = p;
-        light_sample.m_probability = shape_prob * (1.0f / static_cast<float>(area));
-        */
         const Vector3f sphere_center(
             static_cast<float>(m_geom.m_sphere.m_center.x),
             static_cast<float>(m_geom.m_sphere.m_center.y),
-            static_cast<float>(m_geom.m_sphere.m_center.x));
+            static_cast<float>(m_geom.m_sphere.m_center.z));
 
         const float    sphere_radius = static_cast<float>(m_geom.m_sphere.m_radius);
         const Vector3f surface_point(
@@ -591,44 +475,47 @@ bool EmittingShape::sample_solid_angle(
 
         SphericalCap cap;
         prepareSphericalCapSampling(cap, sphere_center - surface_point, sphere_radius);
-        Vector3f sampledDirection = sampleSphericalCap(cap, s);
+        Vector3f sampled_dir = sampleSphericalCap(cap, s);
 
-        // Set the world space shading and geometric normals.
-        //const Ray3f r(surface_point, sampledDirection);
-        //float t;
-        //if (intersect_sphere(r, sphere_center, sphere_radius, t))
+        const Ray3f r(surface_point, sampled_dir);
+        float t;
+        if (!intersect_sphere(r, sphere_center, sphere_radius, t))
         {
-            //const Vector3f p = r.point_at(t);
-            const Vector3f p = sphere_center + sampledDirection;
-            const Vector3f n = sampledDirection;
-            assert(is_normalized(n));
-            light_sample.m_param_coords = s;
-
-            light_sample.m_shading_normal.x = static_cast<double>(n.x);
-            light_sample.m_shading_normal.y = static_cast<double>(n.y);
-            light_sample.m_shading_normal.z = static_cast<double>(n.z);
-            light_sample.m_geometric_normal = light_sample.m_shading_normal;
-
-            // Compute the world space position of the sample.
-            light_sample.m_point.x = static_cast<double>(p.x);
-            light_sample.m_point.y = static_cast<double>(p.y);
-            light_sample.m_point.z = static_cast<double>(p.z);
-            //light_sample.m_probability = shape_prob * cosine * cap.solidAngle;
-            const double cosine = static_cast<double>(dot(surface_normal, sampledDirection));
-
-            //if (cosine <= 0.0f)
-                //return false;
-            const double rcp_solid_angle = 1.0 / static_cast<double>(cap.solidAngle);
-            const double pdf = rcp_solid_angle * cosine;//static_cast<double>(cap.solidAngle) * cosine;
-            light_sample.m_probability = shape_prob * static_cast<float>(pdf);
-            return true;
-            //finalColor += (cosine*cap.solidAngle)*(brdf*pSphereLight->mSurfaceRadiance);
+            std::cout << "Not intersecting. wtf.\n";
+            return false;
         }
+
+        const Vector3f sampled_point = r.point_at(t);
+        //const Vector3f p = sphere_center + sampledDirection;
+        const Vector3f n = normalize(sampled_point - sphere_center);
+        assert(is_normalized(n));
+        light_sample.m_param_coords = s;
+
+        light_sample.m_shading_normal.x = static_cast<double>(n.x);
+        light_sample.m_shading_normal.y = static_cast<double>(n.y);
+        light_sample.m_shading_normal.z = static_cast<double>(n.z);
+        light_sample.m_geometric_normal = light_sample.m_shading_normal;
+
+        // Compute the world space position of the sample.
+        light_sample.m_point.x = static_cast<double>(sampled_point.x);
+        light_sample.m_point.y = static_cast<double>(sampled_point.y);
+        light_sample.m_point.z = static_cast<double>(sampled_point.z);
+        light_sample.m_probability = evaluate_sphere_pdf_solid_angle(
+            sphere_center,
+            sphere_radius,
+            surface_point,
+            surface_normal,
+            sampled_point,
+            m_shape_prob,
+            cap);
+
+        return true;
     }
     else if (shape_type == DiskShape)
     {
         assert(false);
         sample_uniform(s, shape_prob, light_sample);
+        return true;
     }
     else
     {
@@ -647,8 +534,6 @@ float EmittingShape::evaluate_pdf_solid_angle(
 #endif
 
     const auto shape_type = get_shape_type();
-
-    const float shape_probability = m_shape_prob;
 
     if (shape_type == TriangleShape)
     {
@@ -676,93 +561,22 @@ float EmittingShape::evaluate_pdf_solid_angle(
             static_cast<float>(shading_point.get_shading_normal().x),
             static_cast<float>(shading_point.get_shading_normal().y),
             static_cast<float>(shading_point.get_shading_normal().z));
+        const Vector3f sampled_point(
+            static_cast<float>(light_point.x),
+            static_cast<float>(light_point.y),
+            static_cast<float>(light_point.z));
 
         SphericalCap cap;
-        Vector3d d = shading_point.get_point() - light_point;
-        const double d_norm = norm(d);
-        d /= d_norm;
         prepareSphericalCapSampling(cap, sphere_center - surface_point, sphere_radius);
-        const Vector3d p = light_point;
-        assert(is_normalized(n));
-        const double cosine = dot(shading_point.get_shading_normal(), d);
-        const double rcp_solid_angle = 1.0 / static_cast<double>(cap.solidAngle);
 
-        const double pdf = rcp_solid_angle * cosine;//static_cast<double>(cap.solidAngle) * cos_theta;
-        return shape_probability * static_cast<float>(pdf);
-
-
-        const Ray3d r(shading_point.get_point(), d);
-        double t;
-        if (intersect_sphere_unit_direction(
-            r,
-            m_geom.m_sphere.m_center,
-            m_geom.m_sphere.m_radius,
-            t))
-        {
-        }
-
-        return 0.0f;
-
-        // hey, compute uvs.
-        /*
-        const Vector3d dir = normalize(light_point - surface_point);
-        const Ray3d r(surface_point, dir);
-
-        double t;
-
-        bool intersects = intersect_sphere_unit_direction(
-            r,
-            m_geom.m_sphere.m_center,
-            m_geom.m_sphere.m_radius,
-            t);
-
-        assert(intersects);
-
-        if (intersects)
-        {
-            const Vector3d p(r.point_at(t) / sphere_radius);
-            const double s0 = atan2(-p.z, p.x) * RcpTwoPi<double>();
-            const double s1 = 1.0 - (acos(p.y) * RcpPi<double>());
-
-            const Vector3d basisZ = surface_normal;
-            const Vector3d basisY = normalize(cross(basisZ, (sphere_center - surface_point)));
-            const Vector3d basisX = cross(basisY, basisZ);
-
-            const Vector3d wdir = basisX * s0 + basisY * s1 + basisZ * sqrt(1.0 - square(s0) - square(s1));
-
-            // Compute aperture parameters.
-            const Vector3d apterure_center = normalize(sphere_center - surface_point);
-            const double aperture_alpha = std::asin(sphere_radius / norm(sphere_center - surface_point));
-            const double apeture_beta = std::asin(dot(basisZ, apterure_center - surface_point));
-
-            // Create the map.
-            PSCM::PSCMaps<double> map;
-            map.initialize(aperture_alpha, apeture_beta, true);
-            const double area = map.get_area();
-            return (1.0f / static_cast<float>(area));
-        }
-
-        std::cout << "not intersecting, lol\n";
-        */
-
-        return -1.0f;
-
-        // wip
-        assert(false);
-        return 0.0f;
-        /*
-        const Vector3d& center = m_geom.m_sphere.m_center;
-        const double radius_sqr = square(m_geom.m_sphere.m_radius);
-
-        const double dist_to_center = square_distance(surface_point, center);
-        if (dist_to_center <= radius_sqr)
-            return shape_probability * FourPi<float>();
-
-        const float sin_theta_sqr = static_cast<float>(radius_sqr / dist_to_center);
-        const float cos_theta = sqrt(max(0.0f, 1.0f - sin_theta_sqr));
-
-        return shape_probability * TwoPi<float>() * (1.0f - cos_theta);
-        */
+        return evaluate_sphere_pdf_solid_angle(
+            sphere_center,
+            sphere_radius,
+            surface_point,
+            surface_normal,
+            sampled_point,
+            m_shape_prob,
+            cap);
     }
     else if (shape_type == DiskShape)
     {
