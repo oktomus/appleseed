@@ -256,6 +256,7 @@ void EmittingShape::sample_uniform(
     const float             shape_prob,
     LightSample&            light_sample) const
 {
+    std::cout << "sample_uniform\n";
     // Store a pointer to the emitting shape.
     light_sample.m_shape = this;
 
@@ -349,6 +350,7 @@ void EmittingShape::sample_uniform(
 
 float EmittingShape::evaluate_pdf_uniform() const
 {
+    std::cout << "evaluate pdf uniform\n";
     return m_shape_prob * get_rcp_area();
 }
 
@@ -377,8 +379,6 @@ namespace {
         return a * b + c;
     }
 
-#define M_PI2_FLOAT 6.28318530717958647692f
-
     /*!	Prepares all intermediate values to sample a spherical cap proportional to
     solid angle. The sphere center is given relative to the surface point for
     which samples are taken.*/
@@ -392,7 +392,7 @@ namespace {
         // Compute the radius of the circle that bounds the spherical cap
         float maximalRadius = sphereRadius * invCenterDistance;
         cap.minimalDot = sqrt(saturate(mad(-maximalRadius, maximalRadius, 1.0f)));
-        cap.solidAngle = mad(-cap.minimalDot, M_PI2_FLOAT, M_PI2_FLOAT);
+        cap.solidAngle = mad(-cap.minimalDot, TwoPi<float>(), TwoPi<float>());
     }
     /*! Maps independent, uniform random numbers from 0 to 1 to world space samples
     in the given spherical cap. Samples are distributed in proportion to solid
@@ -404,8 +404,8 @@ namespace {
         local.z = lerp(cap.minimalDot, 1.0f, randomNumbers.x);
         // Complete to a point on the sphere
         float radius = sqrt(saturate(mad(-local.z, local.z, 1.0f)));
-        local.x = radius * cos(M_PI2_FLOAT*randomNumbers.y);
-        local.y = radius * sin(M_PI2_FLOAT*randomNumbers.y);
+        local.x = radius * cos(TwoPi<float>()*randomNumbers.y);
+        local.y = radius * sin(TwoPi<float>()*randomNumbers.y);
         // Now turn that into a world space sample
         return local.x*cap.tangent + local.y*cap.bitangent + local.z*cap.normal;
         //return local;
@@ -423,48 +423,95 @@ namespace {
     {
         int algo = 6;
 
-        float pdf, cosine, rcp_solid_angle, cos_theta;
+        float pdf, rcp_solid_angle, cos_theta;
+        float sin_theta_max_2, cos_theta_max;
 
         switch (algo)
         {
         case 0:
-            // brighter on the edge of planes
+            // scatter: brighter on the edge of planes
             return (1.0f / cap.solidAngle);
         case 1:
-            // not working
+            // scatter: not working
             // complete mess -> render fails
             return (1.0f / cap.solidAngle) * dot(-surface_normal, normalize(light_point - surface_point));
         case 2:
             //From the realtime PCS paper 
-            // Dull image, but seems brighter on the edges
-            cosine = dot(surface_normal, normalize(light_point - surface_point));
-            return cosine * cap.solidAngle;
+            // scatter: Dull image, but seems brighter on the edges
+            cos_theta = dot(surface_normal, normalize(light_point - surface_point));
+            return cos_theta * cap.solidAngle;
         case 3:
-            // pretty good, but brighter on the center of the planes
-            cosine = dot(surface_normal, normalize(light_point - surface_point));
+            // scatter: pretty good, but brighter on the center of the planes
+            cos_theta = dot(surface_normal, normalize(light_point - surface_point));
             rcp_solid_angle = 1.0f / cap.solidAngle;
 
-            pdf = rcp_solid_angle * cosine;
+            pdf = rcp_solid_angle * cos_theta;
             return (1.0f / area) * shape_prob * pdf;
         case 4:
-            // complete mess, like algo 1
+            // scatter: complete mess, like algo 1
             cos_theta = -dot(surface_normal, normalize(light_point - surface_point));
             rcp_solid_angle = 1.0f / cap.solidAngle;
 
             pdf = rcp_solid_angle * cos_theta / square_distance(light_point, surface_point);
             return area * static_cast<float>(pdf);
         case 5:
-            // pretty good, but a bit too dark
-            cosine = dot(surface_normal, normalize(light_point - surface_point));
+            // scatter: pretty good, but a bit too dark
+            // hit: wayyyyyyyyyyyyy too dark
+            cos_theta = dot(surface_normal, normalize(light_point - surface_point));
             rcp_solid_angle = 1.0f / cap.solidAngle;
 
-            pdf = rcp_solid_angle * cosine / sqrt(square_distance(light_point, surface_point));
+            pdf = rcp_solid_angle * cos_theta / sqrt(square_distance(light_point, surface_point));
             return (1.0f / area) * shape_prob * pdf;
         case 6:
-            cosine = dot(surface_normal, normalize(light_point - surface_point));
+            // scatter: alright, but slightly luminance differences
+            // hit: way too dark
+            cos_theta = dot(surface_normal, normalize(light_point - surface_point));
             rcp_solid_angle = 1.0f / cap.solidAngle;
 
-            pdf = rcp_solid_angle * cosine / square_distance(light_point, surface_point);
+            pdf = shape_prob * rcp_solid_angle * cos_theta / square_distance(light_point, surface_point);
+            return pdf;
+        case 7:
+            // hit: not bad but too bright in the corners
+            cos_theta = dot(surface_normal, normalize(light_point - surface_point));
+            pdf = area / square_distance(light_point, surface_point);
+            return pdf;
+        case 8:
+            // hit: really good but slightly too bright in the corners
+            cos_theta = dot(surface_normal, normalize(light_point - surface_point));
+            rcp_solid_angle = 1.0f / cap.solidAngle;
+            pdf = area * (rcp_solid_angle * cos_theta / square_distance(light_point, surface_point));
+            return pdf;
+        case 9:
+            // hit: way too dark
+            cos_theta = dot(surface_normal, normalize(light_point - surface_point));
+            rcp_solid_angle = 1.0f / cap.solidAngle;
+            pdf = area * (rcp_solid_angle * cos_theta / sqrt(square_distance(light_point, surface_point)));
+            return pdf;
+        case 10:
+            // PBR Book.
+            // hit: a tiny bit too dark.
+            sin_theta_max_2 = sphere_radius * sphere_radius / square_distance(surface_point, sphere_center);
+            cos_theta_max = std::sqrt(std::max(0.0f, 1.0f - sin_theta_max_2));
+            return 1.0f / (TwoPi<float>() * (1.0f - cos_theta_max));
+        case 11:
+            // hit: too bright
+            cos_theta = dot(surface_normal, normalize(light_point - surface_point));
+            rcp_solid_angle = 1.0f / cap.solidAngle;
+            pdf = area * (rcp_solid_angle * cos_theta / square_distance(sphere_center, surface_point));
+            return pdf;
+        case 12:
+            // scatter: way too bright
+            cos_theta = dot(surface_normal, normalize(light_point - surface_point));
+            rcp_solid_angle = 1.0f / cap.solidAngle;
+            pdf = area * (rcp_solid_angle * cos_theta / square_distance(light_point, surface_point));
+            return pdf;
+        case 13:
+            // hit: really good but slightly too bright in the corners
+            cos_theta = dot(surface_normal, normalize(light_point - surface_point));
+            if (cos_theta <= 0.0f)
+                return 0.0f;
+            rcp_solid_angle = 1.0f / cap.solidAngle;
+            pdf = (rcp_solid_angle * cos_theta / square_distance(light_point, surface_point));
             return pdf;
         default:
             return 1.0f;
@@ -523,6 +570,11 @@ bool EmittingShape::sample_solid_angle(
         //const Vector3f p = sphere_center + sampledDirection;
         const Vector3f n = normalize(sampled_point - sphere_center);
         assert(is_normalized(n));
+
+        const float cos_theta = dot(surface_normal, normalize(sampled_point - surface_point));
+        if (cos_theta <= 0.0f)
+            return false;
+
         light_sample.m_param_coords = s;
 
         light_sample.m_shading_normal = Vector3d(n);

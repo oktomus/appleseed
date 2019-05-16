@@ -158,12 +158,15 @@ void DirectLightingIntegrator::compute_outgoing_radiance_light_sampling_low_vari
         }
     }
 
+
     // Add contributions from the light set.
     if (m_light_sampler.has_lightset())
     {
         DirectShadingComponents lightset_radiance;
 
         sampling_context.split_in_place(3, m_light_sample_count);
+
+        size_t actual_light_sample_count = 0;
 
         for (size_t i = 0, e = m_light_sample_count; i < e; ++i)
         {
@@ -199,10 +202,12 @@ void DirectLightingIntegrator::compute_outgoing_radiance_light_sampling_low_vari
                     lightset_radiance,
                     light_path_stream);
             }
+
+            ++actual_light_sample_count;
         }
 
-        if (m_light_sample_count > 1)
-            lightset_radiance /= static_cast<float>(m_light_sample_count);
+        if (actual_light_sample_count > 1)
+            lightset_radiance /= static_cast<float>(actual_light_sample_count);
 
         radiance += lightset_radiance;
     }
