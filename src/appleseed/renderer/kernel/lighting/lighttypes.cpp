@@ -468,7 +468,7 @@ namespace {
             cos_theta = dot(surface_normal, normalize(light_point - surface_point));
             rcp_solid_angle = 1.0f / cap.solidAngle;
 
-            pdf = shape_prob * rcp_solid_angle * cos_theta / square_distance(light_point, surface_point);
+            pdf = shape_prob * (cos_theta * rcp_solid_angle / square_distance(light_point, surface_point));
             return pdf;
         case 7:
             // hit: not bad but too bright in the corners
@@ -517,6 +517,44 @@ namespace {
             return 1.0f;
         }
     }
+
+    Vector3f ProjectOntoV(Vector3f u, Vector3f v)
+    {
+        float d = dot(u, v);
+        float v2 = dot(v, v);
+
+        return (d / v2) * v;
+    }
+
+    void RaySphereNearest(Vector3f o, Vector3f d, Vector3f center, float r, Vector3f& p)
+    {
+        Vector3f x = o - center;
+        float dotDX = dot(d, x);
+
+        float a = 1;
+        float b = 2.0f * dotDX;
+        float c = dot(x, x) - r * r;
+
+        float t;
+
+        float root = b * b - 4.0f * a * c;
+        if (root < 0.0f) {
+            t = norm(ProjectOntoV(x, d));
+        }
+        else if (root == 0.0f) {
+            t = -0.5f * b / a;
+        }
+        else {
+            float q = (b > 0) ? -0.5f * (b + sqrt(root)) : -0.5f * (b - sqrt(root));
+            float t0 = q / a;
+            float t1 = c / q;
+
+            t = min(t0, t1);
+        }
+
+        p = o + t * d;
+    }
+
 }
 
 bool EmittingShape::sample_solid_angle(
@@ -558,15 +596,19 @@ bool EmittingShape::sample_solid_angle(
         prepareSphericalCapSampling(cap, sphere_center - surface_point, sphere_radius);
         Vector3f sampled_dir = sampleSphericalCap(cap, s);
 
-        const Ray3f r(surface_point, sampled_dir);
-        float t;
-        if (!intersect_sphere(r, sphere_center, sphere_radius, t))
-        {
-            std::cout << "Not intersecting. wtf.\n";
-            return false;
-        }
 
-        const Vector3f sampled_point = r.point_at(t);
+        Vector3f sampled_point;
+        RaySphereNearest(surface_point, sampled_dir, sphere_center, sphere_radius, sampled_point);
+
+        //const Ray3f r(surface_point, sampled_dir);
+        //float t;
+        //if (!intersect_sphere(r, sphere_center, sphere_radius, t))
+        //{
+            //std::cout << "Not intersecting. wtf.\n";
+            //return false;
+        //}
+
+        //const Vector3f sampled_point = r.point_at(t);
         //const Vector3f p = sphere_center + sampledDirection;
         const Vector3f n = normalize(sampled_point - sphere_center);
         assert(is_normalized(n));
