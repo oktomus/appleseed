@@ -38,6 +38,7 @@
 #include "renderer/modeling/material/ibasismodifier.h"
 #include "renderer/modeling/object/meshobject.h"
 #include "renderer/modeling/object/object.h"
+#include "renderer/modeling/object/proceduralobject.h"
 #include "renderer/modeling/scene/scene.h"
 #include "renderer/modeling/shadergroup/shadergroup.h"
 #include "renderer/utility/triangle.h"
@@ -410,8 +411,14 @@ void ShadingPoint::refine_and_offset() const
         break;
 
       case PrimitiveProceduralSurface:
-        // TODO: do we need to refine & offset here as well?
-        m_front_point = m_back_point = local_ray.m_org;
+        {
+            const ProceduralObject& object = static_cast<const ProceduralObject&>(get_object());
+            object.refine_and_offset(
+                local_ray.m_org,
+                local_ray.m_dir,
+                m_front_point,
+                m_back_point);
+        }
         break;
 
       case PrimitiveCurve1:
