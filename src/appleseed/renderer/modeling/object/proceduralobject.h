@@ -66,19 +66,25 @@ class APPLESEED_DLLSYMBOL ProceduralObject
     // Compute the intersection between a ray expressed in object space and
     // the surface of this object and return detailed intersection results.
     virtual void intersect(
-        const ShadingRay&       ray,
-        IntersectionResult&     result) const = 0;
+        const ShadingRay&               ray,
+        IntersectionResult&             result) const = 0;
 
     // Compute the intersection between a ray expressed in object space and
     // the surface of this object and simply return whether there was a hit.
     virtual bool intersect(
-        const ShadingRay&       ray) const = 0;
+        const ShadingRay&               ray) const = 0;
+
+    virtual void refine_and_offset(
+        const foundation::Vector3d&     origin,
+        const foundation::Vector3d&     dir,
+        foundation::Vector3d&           front_point,
+        foundation::Vector3d&           back_point) const = 0;
 
   protected:
     // Constructor.
     ProceduralObject(
-        const char*             name,
-        const ParamArray&       params);
+        const char*                     name,
+        const ParamArray&               params);
 };
 
 }   // namespace renderer
