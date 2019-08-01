@@ -61,10 +61,10 @@ class APPLESEED_DLLSYMBOL RectangleObject
     const char* get_model() const override;
 
     bool on_frame_begin(
-        const Project&              project,
-        const BaseGroup*            parent,
-        OnFrameBeginRecorder&       recorder,
-        foundation::IAbortSwitch*   abort_switch) override;
+        const Project&                  project,
+        const BaseGroup*                parent,
+        OnFrameBeginRecorder&           recorder,
+        foundation::IAbortSwitch*       abort_switch) override;
 
     GAABB3 compute_local_bbox() const override;
 
@@ -76,16 +76,22 @@ class APPLESEED_DLLSYMBOL RectangleObject
     double get_uncached_height() const;
 
     void get_origin_and_axes(
-        foundation::Vector3d&       origin,
-        foundation::Vector3d&       x,
-        foundation::Vector3d&       y,
-        foundation::Vector3d&       n) const;
+        foundation::Vector3d&           origin,
+        foundation::Vector3d&           x,
+        foundation::Vector3d&           y,
+        foundation::Vector3d&           n) const;
 
     void intersect(
-        const ShadingRay&           ray,
-        IntersectionResult&         result) const override;
+        const ShadingRay&               ray,
+        IntersectionResult&             result) const override;
 
     bool intersect(const ShadingRay& ray) const override;
+
+    void refine_and_offset(
+        const foundation::Vector3d&     origin,
+        const foundation::Vector3d&     dir,
+        foundation::Vector3d&           front_point,
+        foundation::Vector3d&           back_point) const override;
 
   private:
     friend class RectangleObjectFactory;

@@ -93,6 +93,12 @@ class APPLESEED_DLLSYMBOL DiskObject
 
     bool intersect(const ShadingRay& ray) const override;
 
+    void refine_and_offset(
+        const foundation::Vector3d&     origin,
+        const foundation::Vector3d&     dir,
+        foundation::Vector3d&           front_point,
+        foundation::Vector3d&           back_point) const override;
+
   private:
     friend class DiskObjectFactory;
 

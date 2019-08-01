@@ -204,6 +204,15 @@ bool RectangleObject::intersect(const ShadingRay& ray) const
         impl->m_normal);
 }
 
+void RectangleObject::refine_and_offset(
+    const Vector3d&         origin,
+    const Vector3d&         dir,
+    Vector3d&               front_point,
+    Vector3d&               back_point) const
+{
+    assert(false);
+    front_point = back_point = origin;
+}
 
 //
 // RectangleObjectFactory class implementation.
