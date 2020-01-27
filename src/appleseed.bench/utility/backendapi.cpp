@@ -116,7 +116,7 @@ void generate_encryption_key_cpp_file()
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
         throw std::runtime_error("Failed to open encryption_key.h for writing");
 
-    const QByteArray encryption_key = QByteArray::fromBase64(APPLESEED_TO_STRING_EVAL(APPLESEED_BENCH_ENCRYPTION_KEY));
+    const QByteArray encryption_key = QByteArray::fromBase64("todo: remove this");
 
     QTextStream stream(&file);
 
@@ -148,7 +148,7 @@ void generate_encryption_key_cpp_file()
 
 QByteArray encrypt(const QByteArray& input)
 {
-    const QByteArray encryption_key = QByteArray::fromBase64(APPLESEED_TO_STRING_EVAL(APPLESEED_BENCH_ENCRYPTION_KEY));
+    const QByteArray encryption_key = QByteArray::fromBase64("todo: remove this");
 
     // Abort (don't just assert) if the key is too short.
     if (encryption_key.size() < 16)
@@ -159,13 +159,13 @@ QByteArray encrypt(const QByteArray& input)
 
 QString get_encrypted_api_url()
 {
-    const QByteArray api_url = QByteArray::fromBase64(APPLESEED_TO_STRING_EVAL(APPLESEED_BENCH_BACKEND_API_URL));
+    const QByteArray api_url = QByteArray::fromBase64("todo: remove this");
     return encrypt(api_url).toBase64();
 }
 
 QString get_encrypted_api_key()
 {
-    const QByteArray api_key = QByteArray::fromBase64(APPLESEED_TO_STRING_EVAL(APPLESEED_BENCH_BACKEND_API_KEY));
+    const QByteArray api_key = QByteArray::fromBase64("todo: remove this");
     return encrypt(api_key).toBase64();
 }
 
@@ -181,13 +181,13 @@ QByteArray decrypt(const QByteArray& input)
 
 QString get_decrypted_api_url()
 {
-    const QByteArray encrypted_api_url = QByteArray::fromBase64(APPLESEED_TO_STRING_EVAL(APPLESEED_BENCH_BACKEND_API_URL));
+    const QByteArray encrypted_api_url = QByteArray::fromBase64("todo: remove this");
     return decrypt(encrypted_api_url);
 }
 
 QString get_decrypted_api_key()
 {
-    const QByteArray encrypted_api_key = QByteArray::fromBase64(APPLESEED_TO_STRING_EVAL(APPLESEED_BENCH_BACKEND_API_KEY));
+    const QByteArray encrypted_api_key = QByteArray::fromBase64("todo: remove this");
     return decrypt(encrypted_api_key).toBase64();
 }
 
