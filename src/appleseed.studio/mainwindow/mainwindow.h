@@ -210,7 +210,7 @@ class MainWindow
     // Render tabs.
     void recreate_viewport_tabs();
     void remove_viewport_tabs();
-    void add_viewport_tab(const QString& label);
+    void add_viewport_tab(const QString& label, const ViewportWidget::BaseLayer base_layer);
 
     // Project file handling.
     renderer::ParamArray get_project_params(const char* configuration_name) const;

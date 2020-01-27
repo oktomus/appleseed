@@ -951,7 +951,10 @@ void MainWindow::recreate_viewport_tabs()
     remove_viewport_tabs();
 
     if (m_project_manager.is_project_open())
-        add_viewport_tab("RGB");
+    { 
+        add_viewport_tab("Beauty", ViewportWidget::BaseLayer::FinalRender);
+        add_viewport_tab("OpenGL", ViewportWidget::BaseLayer::OpenGL);
+    }
 }
 
 void MainWindow::remove_viewport_tabs()
@@ -966,11 +969,12 @@ void MainWindow::remove_viewport_tabs()
         m_ui->tab_render_channels->removeTab(0);
 }
 
-void MainWindow::add_viewport_tab(const QString& label)
+void MainWindow::add_viewport_tab(const QString& label, const ViewportWidget::BaseLayer base_layer)
 {
     // Create render tab.
     ViewportTab* viewport_tab =
         new ViewportTab(
+            base_layer,
             *m_project_explorer,
             *m_project_manager.get_project(),
             m_rendering_manager,
@@ -1226,7 +1230,7 @@ void MainWindow::start_rendering(const RenderingMode rendering_mode)
         rendering_mode == RenderingMode::InteractiveRendering
             ? RenderingManager::RenderingMode::InteractiveRendering
             : RenderingManager::RenderingMode::FinalRendering,
-        m_viewport_tabs["RGB"]);
+        m_viewport_tabs["Beauty"]);
 }
 
 void MainWindow::apply_false_colors_settings()
@@ -2034,7 +2038,7 @@ void MainWindow::slot_save_render_widget_content()
         return;
 
     // todo: this is sketchy. The render tab should be retrieved from the signal.
-    m_viewport_tabs["RGB"]->get_viewport_widget()->get_render_layer()->capture().save(filepath);
+    m_viewport_tabs["Beauty"]->get_viewport_widget()->get_render_layer()->capture().save(filepath);
 
     RENDERER_LOG_INFO("wrote image file %s.", filepath.toStdString().c_str());
 }
