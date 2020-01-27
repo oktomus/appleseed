@@ -76,11 +76,12 @@ namespace studio {
 //
 
 ViewportTab::ViewportTab(
-    ProjectExplorer&        project_explorer,
-    Project&                project,
-    RenderingManager&       rendering_manager,
-    OCIO::ConstConfigRcPtr  ocio_config,
-    renderer::ParamArray    application_settings)
+    const ViewportWidget::BaseLayer     base_layer,
+    ProjectExplorer&                    project_explorer,
+    Project&                            project,
+    RenderingManager&                   rendering_manager,
+    OCIO::ConstConfigRcPtr              ocio_config,
+    renderer::ParamArray                application_settings)
   : m_application_settings(application_settings)
   , m_project_explorer(project_explorer)
   , m_project(project)
@@ -101,6 +102,25 @@ ViewportTab::ViewportTab(
     layout()->addWidget(m_toolbar);
     layout()->addWidget(m_light_paths_manager->toolbar());
     layout()->addWidget(m_scroll_area);
+
+    m_viewport_widget->set_base_layer(base_layer);
+
+    switch (base_layer)
+    {
+        case ViewportWidget::BaseLayer::FinalRender:
+            if (m_rendering_manager.is_rendering()
+                && m_rendering_manager.get_rendering_mode() == RenderingManager::RenderingMode::InteractiveRendering)
+                m_camera_controller.get()->set_enabled(true);
+            else
+                m_camera_controller.get()->set_enabled(false);
+            break;
+
+        case ViewportWidget::BaseLayer::OpenGL:
+            m_camera_controller.get()->set_enabled(true);
+            break;
+    }
+
+    get_viewport_widget()->update();
 }
 
 ViewportWidget* ViewportTab::get_viewport_widget() const
@@ -177,22 +197,6 @@ void ViewportTab::load_state(const State& state)
 
 void ViewportTab::slot_base_layer_changed(const ViewportWidget::BaseLayer base_layer)
 {
-    switch (base_layer)
-    {
-        case ViewportWidget::BaseLayer::FinalRender:
-            if (m_rendering_manager.is_rendering()
-                && m_rendering_manager.get_rendering_mode() == RenderingManager::RenderingMode::InteractiveRendering)
-                m_camera_controller.get()->set_enabled(true);
-            else
-                m_camera_controller.get()->set_enabled(false);
-            break;
-
-        case ViewportWidget::BaseLayer::OpenGL:
-            m_camera_controller.get()->set_enabled(true);
-            break;
-    }
-
-    get_viewport_widget()->update();
 }
 
 void ViewportTab::slot_camera_changed()
@@ -270,27 +274,6 @@ void ViewportTab::create_toolbar()
     m_toolbar = new QToolBar();
     m_toolbar->setObjectName("render_toolbar");
     m_toolbar->setIconSize(QSize(18, 18));
-
-    // Create the label preceding the scene display combo box
-    QLabel* scene_layer_label = new QLabel("Scene Display Mode:");
-    scene_layer_label->setObjectName("display_mode_label");
-    m_toolbar->addWidget(scene_layer_label);
-
-    // Create the scene base layer combo box
-    m_base_layer_combo = new QComboBox();
-    m_base_layer_combo->setObjectName("base_layer_combo");
-    for (int i = 0; i < ViewportWidget::BaseLayer::BASE_LAYER_MAX_VALUE; i++) {
-        m_base_layer_combo->addItem(ViewportWidget::base_layer_string(static_cast<ViewportWidget::BaseLayer>(i)));
-    }
-    m_toolbar->addWidget(m_base_layer_combo);
-    connect(
-        m_base_layer_combo, SIGNAL(activated(int)),
-        m_viewport_widget, SLOT(slot_base_layer_changed(int))
-    );
-    connect(
-        m_viewport_widget, SIGNAL(signal_base_layer_changed(const ViewportWidget::BaseLayer)),
-        SLOT(slot_base_layer_changed(const ViewportWidget::BaseLayer))
-    );
 
     m_light_paths_toggle_button = new QToolButton();
     m_light_paths_toggle_button->setText("Display Light Paths Overlay");

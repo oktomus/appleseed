@@ -105,6 +105,8 @@ class ViewportWidget
         const size_t            width,
         const size_t            height);
 
+    void set_base_layer(const BaseLayer base_layer);
+
     BaseLayer get_active_layer() const;
     RenderLayer* get_render_layer();
     GLSceneLayer* get_gl_scene_layer();
@@ -114,13 +116,9 @@ class ViewportWidget
     void signal_material_dropped(
         const foundation::Vector2d& drop_pos,
         const QString&          material_name);
-    void signal_base_layer_changed(const ViewportWidget::BaseLayer layer);
 
   public slots:
     void slot_light_paths_should_display(const bool should_display);
-
-  private slots:
-    void slot_base_layer_changed(int index);
 
   private:
     const renderer::Project&            m_project;

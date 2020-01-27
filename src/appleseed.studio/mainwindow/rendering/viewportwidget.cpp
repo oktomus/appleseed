@@ -261,6 +261,12 @@ void ViewportWidget::resize(
     m_light_paths_layer->resize(width, height);
 }
 
+void ViewportWidget::set_base_layer(const BaseLayer base_layer)
+{
+    m_active_base_layer = base_layer;
+    update();
+}
+
 void ViewportWidget::resizeGL(
     int width,
     int height)
@@ -399,15 +405,6 @@ void ViewportWidget::dropEvent(QDropEvent* event)
             static_cast<double>(event->pos().x()) / width(),
             static_cast<double>(event->pos().y()) / height()),
         event->mimeData()->text());
-}
-
-void ViewportWidget::slot_base_layer_changed(int index)
-{
-    assert(index < BaseLayer::BASE_LAYER_MAX_VALUE);
-    m_active_base_layer = static_cast<BaseLayer>(index);
-    update();
-
-    emit signal_base_layer_changed(m_active_base_layer);
 }
 
 void ViewportWidget::slot_light_paths_should_display(const bool should_display)

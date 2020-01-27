@@ -83,11 +83,12 @@ class ViewportTab
 
   public:
     ViewportTab(
-        ProjectExplorer&        project_explorer,
-        renderer::Project&      project,
-        RenderingManager&       rendering_manager,
-        OCIO::ConstConfigRcPtr  ocio_config,
-        renderer::ParamArray    application_settings);
+        const ViewportWidget::BaseLayer     base_layer,
+        ProjectExplorer&                    project_explorer,
+        renderer::Project&                  project,
+        RenderingManager&                   rendering_manager,
+        OCIO::ConstConfigRcPtr              ocio_config,
+        renderer::ParamArray                application_settings);
 
     ViewportWidget* get_viewport_widget() const;
     CameraController* get_camera_controller() const;
