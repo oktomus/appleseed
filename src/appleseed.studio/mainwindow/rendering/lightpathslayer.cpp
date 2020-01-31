@@ -89,7 +89,7 @@ LightPathsLayer::LightPathsLayer(
   , m_gl_initialized(false)
   , m_width(width)
   , m_height(height)
-  , m_max_thickness(4.0f)
+  , m_max_thickness(1.0f)
   , m_min_thickness(1.0f)
   , m_max_luminance(0.0f)
 {
