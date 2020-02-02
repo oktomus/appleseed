@@ -53,12 +53,14 @@ flat out float f_thickness;
 flat out float f_total_thickness;
 flat out float f_aspect_expansion_len;
 
+const float CLIPPING_PREVENTION_FACTOR = 0.01;
+
 void main() {
     float aspect = u_res.x / u_res.y;
     vec2 aspect_vec = vec2(aspect, 1.0);
     mat4 vp = u_proj * u_view;
     vec4 prev_proj = vp * vec4(v_previous, 1.0);
-    vec4 curr_proj = vp * vec4(v_position, 1.0);
+    vec4 curr_proj = vp * vec4(v_position + v_surface_normal * CLIPPING_PREVENTION_FACTOR, 1.0);
     vec4 next_proj = vp * vec4(v_next, 1.0);
 
     //get 2D screen space with W divide and aspect correction
@@ -80,8 +82,11 @@ void main() {
     } 
     else if ((v_direction_start_end & 4) == 4)
     {
-        //ending point uses (current - v_previous)
+        //ending point uses (current - previous)
         dir = normalize(curr_screen - prev_screen);
+    } else {
+        // middle point uses (next - current)
+        dir = normalize(next_screen - curr_screen);
     }
     vec2 perp_dir = vec2(-dir.y, dir.x);
 
