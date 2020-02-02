@@ -571,7 +571,6 @@ void LightPathsLayer::render_scene(const GLfloat* gl_view_matrix) const
 
         m_gl->glBindVertexArray(m_light_paths_vao);
 
-
         m_gl->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_indices_ebo);
         m_gl->glDrawElements(GL_TRIANGLES, m_total_triangle_count, GL_UNSIGNED_INT, static_cast<const GLvoid*>(0));
         m_gl->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);

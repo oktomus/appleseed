@@ -501,6 +501,8 @@ void GLSceneLayer::draw()
     render_scene();
 
     m_gl->glDepthMask(GL_TRUE);
+
+    glDisable(GL_CULL_FACE);
 }
 
 void GLSceneLayer::draw_depth_only()
@@ -536,6 +538,8 @@ void GLSceneLayer::draw_depth_only()
     render_scene();
 
     m_gl->glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+    glDisable(GL_CULL_FACE);
 }
 
 void GLSceneLayer::render_scene()
