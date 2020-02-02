@@ -344,6 +344,7 @@ void ViewportWidget::paintGL()
         m_gl->glBlendFunci(1, GL_ZERO, GL_ONE_MINUS_SRC_COLOR);
         m_gl->glEnable(GL_DEPTH_TEST);
         m_gl->glDepthMask(GL_FALSE);
+        m_gl->glDepthFunc(GL_LESS);
 
         if (m_active_base_layer == BaseLayer::FinalRender)
             m_light_paths_layer->draw_render_camera();
