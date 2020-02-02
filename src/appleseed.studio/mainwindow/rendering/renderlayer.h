@@ -107,23 +107,30 @@ class RenderLayer
 
     // Thread-safe.
     void highlight_tile(
-        const renderer::Frame&  frame,
-        const size_t            tile_x,
-        const size_t            tile_y);
+        const renderer::Frame&      frame,
+        const size_t                tile_x,
+        const size_t                tile_y);
 
     // Thread-safe.
     void blit_tile(
-        const renderer::Frame&  frame,
-        const size_t            tile_x,
-        const size_t            tile_y);
+        const renderer::Frame&      frame,
+        const size_t                tile_x,
+        const size_t                tile_y);
 
     // Thread-safe.
-    void blit_frame(const renderer::Frame& frame);
+    void blit_frame(
+        const renderer::Frame&      frame);
 
-    void draw(GLuint empty_vao, bool paths_display_active);
+    // Thread-safe.
+    void set_display_transform(
+        const QString&              transform);
+
+    void draw(
+        GLuint                      empty_vao,
+        bool                        paths_display_active);
+
     void init_gl(QSurfaceFormat format);
-    void set_gl_functions(
-        QOpenGLFunctions_4_1_Core*          functions);
+    void set_gl_functions(QOpenGLFunctions_4_1_Core* functions);
 
     // Direct access to internals for high-performance drawing.
     QMutex& mutex();
@@ -132,10 +139,7 @@ class RenderLayer
   signals:
     void signal_material_dropped(
         const foundation::Vector2d& drop_pos,
-        const QString&          material_name);
-
-  public slots:
-    void slot_display_transform_changed(const QString& transform);
+        const QString&              material_name);
 
   private:
     mutable QMutex                      m_mutex;
@@ -156,13 +160,13 @@ class RenderLayer
     void allocate_working_storage(const foundation::CanvasProperties& frame_props);
 
     void blit_tile_no_lock(
-        const renderer::Frame&  frame,
-        const size_t            tile_x,
-        const size_t            tile_y);
+        const renderer::Frame&      frame,
+        const size_t                tile_x,
+        const size_t                tile_y);
 
     void update_tile_no_lock(
-        const size_t            tile_x,
-        const size_t            tile_y);
+        const size_t                tile_x,
+        const size_t                tile_y);
 };
 
 

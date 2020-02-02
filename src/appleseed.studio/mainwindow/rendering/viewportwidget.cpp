@@ -419,5 +419,15 @@ void ViewportWidget::slot_toggle_backface_culling(const bool checked)
     update();
 }
 
+void ViewportWidget::slot_display_transform_changed(const QString& transform)
+{
+    m_render_layer->set_display_transform(transform);
+
+    if (m_active_base_layer == BaseLayer::FinalRender)
+    {
+        update();
+    }
+}
+
 }   // namespace studio
 }   // namespace appleseed

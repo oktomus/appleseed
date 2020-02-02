@@ -120,6 +120,7 @@ class ViewportWidget
   public slots:
     void slot_light_paths_should_display(const bool should_display);
     void slot_toggle_backface_culling(const bool checked);
+    void slot_display_transform_changed(const QString& transform);
 
   private:
     const renderer::Project&            m_project;

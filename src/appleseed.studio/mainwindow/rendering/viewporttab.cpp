@@ -401,7 +401,7 @@ void ViewportTab::create_toolbar()
     m_toolbar->addWidget(m_display_transform_combo);
     connect(
         m_display_transform_combo, SIGNAL(currentIndexChanged(QString)),
-        m_viewport_widget->get_render_layer(), SLOT(slot_display_transform_changed(QString)));
+        m_viewport_widget, SLOT(slot_display_transform_changed(QString)));
 
     // Add stretchy spacer.
     // This places interactive widgets on the left and info on the right.
