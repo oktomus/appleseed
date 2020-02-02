@@ -243,7 +243,9 @@ void LightPathsViewportManager::clear_selection() const
 
 void LightPathsViewportManager::create_toolbar()
 {
-    LightPathsLayer* light_paths_layer = m_viewport_tab->get_viewport_widget()->get_light_paths_layer();
+    ViewportWidget* viewport_widget = m_viewport_tab->get_viewport_widget();
+    LightPathsLayer* light_paths_layer = viewport_widget->get_light_paths_layer();
+    GLSceneLayer* gl_layer = viewport_widget->get_gl_scene_layer();
 
     // Create the render toolbar.
     m_toolbar = new QToolBar();
@@ -290,9 +292,10 @@ void LightPathsViewportManager::create_toolbar()
     backface_culling_button->setChecked(false);
     connect(
         backface_culling_button, SIGNAL(toggled(bool)),
-        light_paths_layer, SLOT(slot_toggle_backface_culling(bool)));
+        viewport_widget, SLOT(slot_toggle_backface_culling(bool)));
     m_backface_culling_action = m_toolbar->addWidget(backface_culling_button);
-    m_backface_culling_action->setVisible(false);
+    // todo: the backface button should only be visible in OpenGL mode.
+    m_backface_culling_action->setVisible(true);
 
     // Synchronize Camera button.
     QToolButton* sync_camera_button = new QToolButton();
@@ -332,11 +335,11 @@ void LightPathsViewportManager::refresh_backface_culling_button() const
 {
     if (m_viewport_widget->get_active_layer() == ViewportWidget::BaseLayer::OpenGL)
     { 
-        m_backface_culling_action->setVisible(true);
+        //m_backface_culling_action->setVisible(true);
     }
     else
     {
-        m_backface_culling_action->setVisible(false);
+        //m_backface_culling_action->setVisible(false);
     }
 }
 

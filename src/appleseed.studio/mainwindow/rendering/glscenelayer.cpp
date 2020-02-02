@@ -164,11 +164,6 @@ void GLSceneLayer::set_transform(const Transformd& transform)
     m_camera_position = Vector3f(m_camera_matrix.extract_translation());
 }
 
-void GLSceneLayer::slot_toggle_backface_culling(const bool checked)
-{
-    m_backface_culling_enabled = checked;
-}
-
 void GLSceneLayer::slot_synchronize_camera()
 {
     m_camera.transform_sequence().clear();
@@ -467,6 +462,11 @@ void GLSceneLayer::cleanup_gl_data()
     m_scene_object_data_index_counts.clear();
     m_scene_object_instance_counts.clear();
     m_scene_object_current_instances.clear();
+}
+
+void GLSceneLayer::toggle_backface_culling(const bool checked)
+{
+    m_backface_culling_enabled = checked;
 }
 
 void GLSceneLayer::draw()

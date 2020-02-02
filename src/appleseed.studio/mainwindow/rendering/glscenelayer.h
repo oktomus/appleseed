@@ -90,11 +90,12 @@ class GLSceneLayer
     void set_gl_functions(
         QOpenGLFunctions_4_1_Core*          functions);
 
+    void toggle_backface_culling(const bool checked);
+
     void draw();
     void draw_depth_only();
 
   public slots:
-    void slot_toggle_backface_culling(const bool checked);
     void slot_synchronize_camera();
 
   private:

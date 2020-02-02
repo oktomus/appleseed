@@ -413,5 +413,11 @@ void ViewportWidget::slot_light_paths_should_display(const bool should_display)
     update();
 }
 
+void ViewportWidget::slot_toggle_backface_culling(const bool checked)
+{
+    m_gl_scene_layer->toggle_backface_culling(checked);
+    update();
+}
+
 }   // namespace studio
 }   // namespace appleseed
