@@ -89,7 +89,7 @@ RenderLayer::RenderLayer(
 
     const char* display_name = m_ocio_config->getDefaultDisplay();
     const char* default_transform = m_ocio_config->getDefaultView(display_name);
-    slot_display_transform_changed(default_transform);
+    set_display_transform(default_transform);
 
     setAcceptDrops(true);
 }
@@ -344,31 +344,27 @@ void RenderLayer::blit_frame(const Frame& frame)
     }
 }
 
-void RenderLayer::slot_display_transform_changed(const QString& transform)
+void RenderLayer::set_display_transform(const QString& transform)
 {
+    QMutexLocker locker(&m_mutex);
+
+    OCIO::DisplayTransformRcPtr transform_ptr = OCIO::DisplayTransform::Create();
+    transform_ptr->setInputColorSpaceName(OCIO::ROLE_SCENE_LINEAR);
+    transform_ptr->setDisplay(m_ocio_config->getDefaultDisplay());
+    transform_ptr->setView(transform.toStdString().c_str());
+
+    OCIO::ConstContextRcPtr context = m_ocio_config->getCurrentContext();
+    m_ocio_processor = m_ocio_config->getProcessor(context, transform_ptr, OCIO::TRANSFORM_DIR_FORWARD);
+
+    if (m_image_storage)
     {
-        QMutexLocker locker(&m_mutex);
-
-        OCIO::DisplayTransformRcPtr transform_ptr = OCIO::DisplayTransform::Create();
-        transform_ptr->setInputColorSpaceName(OCIO::ROLE_SCENE_LINEAR);
-        transform_ptr->setDisplay(m_ocio_config->getDefaultDisplay());
-        transform_ptr->setView(transform.toStdString().c_str());
-
-        OCIO::ConstContextRcPtr context = m_ocio_config->getCurrentContext();
-        m_ocio_processor = m_ocio_config->getProcessor(context, transform_ptr, OCIO::TRANSFORM_DIR_FORWARD);
-
-        if (m_image_storage)
+        const CanvasProperties& frame_props = m_image_storage->properties();
+        for (size_t y = 0; y < frame_props.m_tile_count_y; ++y)
         {
-            const CanvasProperties& frame_props = m_image_storage->properties();
-            for (size_t y = 0; y < frame_props.m_tile_count_y; ++y)
-            {
-                for (size_t x = 0; x < frame_props.m_tile_count_x; ++x)
-                    update_tile_no_lock(x, y);
-            }
+            for (size_t x = 0; x < frame_props.m_tile_count_x; ++x)
+                update_tile_no_lock(x, y);
         }
     }
-
-    update();
 }
 
 namespace
