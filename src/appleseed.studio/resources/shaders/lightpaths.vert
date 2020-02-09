@@ -79,7 +79,7 @@ void main() {
     {
         //starting point uses (next - current)
         dir = normalize(next_screen - curr_screen);
-    } 
+    }
     else if ((v_direction_start_end & 4) == 4)
     {
         //ending point uses (current - previous)
@@ -99,7 +99,7 @@ void main() {
     vec2 expansion = perp_dir;
     if (tdp > 0.05)
         expansion = tang_clip / tdp;
-    
+
     vec2 norm_exp = normalize(expansion);
     vec2 res_exp_dir = vec2(norm_exp.x * u_res.x, norm_exp.y * u_res.y);
     f_aspect_expansion_len = length(res_exp_dir);
@@ -115,6 +115,6 @@ void main() {
     f_aa_norm = orientation;
 
     bool is_selected = gl_VertexID >= u_first_selected && gl_VertexID < u_last_selected;
-    float a = is_selected ? 1.0 : 0.2;
+    float a = is_selected ? 1.0 : 0.05;
     f_color = vec4(v_color, a);
 }
