@@ -102,7 +102,6 @@ class GLSceneLayer
     const renderer::Project&                        m_project;
     renderer::Camera&                               m_camera;
     foundation::Matrix4d                            m_camera_matrix;
-    foundation::Vector3f                            m_camera_position;
 
     bool                                            m_backface_culling_enabled;
 
@@ -118,12 +117,10 @@ class GLSceneLayer
     GLuint                                          m_scene_shader_program;
     GLint                                           m_scene_view_mat_location;
     GLint                                           m_scene_proj_mat_location;
-    GLint                                           m_scene_camera_pos_location;
 
     GLuint                                          m_depthonly_shader_program;
     GLint                                           m_depthonly_view_mat_location;
     GLint                                           m_depthonly_proj_mat_location;
-    GLint                                           m_depthonly_camera_pos_location;
 
     foundation::Matrix4f                            m_gl_view_matrix;
     foundation::Matrix4f                            m_gl_proj_matrix;

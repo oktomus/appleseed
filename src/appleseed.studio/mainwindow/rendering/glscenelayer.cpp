@@ -161,7 +161,6 @@ void GLSceneLayer::set_transform(const Transformd& transform)
 {
     m_camera_matrix = transform.get_parent_to_local();
     m_gl_view_matrix = transpose(m_camera_matrix);
-    m_camera_position = Vector3f(m_camera_matrix.extract_translation());
 }
 
 void GLSceneLayer::slot_synchronize_camera()
@@ -400,7 +399,6 @@ void GLSceneLayer::init_gl(QSurfaceFormat format)
 
     m_depthonly_view_mat_location = m_gl->glGetUniformLocation(m_depthonly_shader_program, "u_view");
     m_depthonly_proj_mat_location = m_gl->glGetUniformLocation(m_depthonly_shader_program, "u_proj");
-    m_depthonly_camera_pos_location = m_gl->glGetUniformLocation(m_depthonly_shader_program, "u_camera_pos");
 
     const float z_near = 0.01f;
     const float z_far = 1000.0f;
@@ -493,10 +491,6 @@ void GLSceneLayer::draw()
         1,
         false,
         const_cast<const GLfloat*>(&m_gl_proj_matrix[0]));
-    m_gl->glUniform3fv(
-        m_scene_camera_pos_location,
-        1,
-        const_cast<const GLfloat*>(&m_camera_position[0]));
     
     render_scene();
 
@@ -530,10 +524,6 @@ void GLSceneLayer::draw_depth_only()
         1,
         false,
         const_cast<const GLfloat*>(&m_gl_proj_matrix[0]));
-    m_gl->glUniform3fv(
-        m_depthonly_camera_pos_location,
-        1,
-        const_cast<const GLfloat*>(&m_camera_position[0]));
 
     render_scene();
 
